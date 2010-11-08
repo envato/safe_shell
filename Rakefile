@@ -5,11 +5,11 @@ begin
   require 'jeweler'
   Jeweler::Tasks.new do |gem|
     gem.name = "safe_shell"
-    gem.summary = %Q{TODO: one-line summary of your gem}
-    gem.description = %Q{TODO: longer description of your gem}
+    gem.summary = %Q{Safely execute shell commands and get their output.}
+    gem.description = %Q{Execute shell commands and get the resulting output, but without the security problems of Ruby’s backtick operator.}
     gem.email = "pete@notahat.com"
     gem.homepage = "http://github.com/envato/safe_shell"
-    gem.authors = ["Pete Yandell"]
+    gem.authors = ["Envato", "Ian Leitch", "Pete Yandell"]
     gem.add_development_dependency "rspec", ">= 1.2.9"
     # gem is a Gem::Specification... see http://www.rubygems.org/read/chapter/20 for additional settings
   end
