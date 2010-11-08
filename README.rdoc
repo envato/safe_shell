@@ -1,6 +1,6 @@
-= Safe Shell
+= SafeShell
 
-Safe Shell lets you execute shell commands and get the resulting output, but without the security problems of Ruby's backtick operator.
+SafeShell lets you execute shell commands and get the resulting output, but without the security problems of Ruby's backtick operator.
 
 == Usage
 
@@ -26,7 +26,7 @@ If you use backticks to process a file supplied by a user, a carefully crafted f
     sh: blah: command not found
     => "\n"
 
-Safe Shell solves this.
+SafeShell solves this.
 
     SafeShell.execute("echo", file)
     => ";blah\n"
