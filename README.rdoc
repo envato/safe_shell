@@ -1,6 +1,18 @@
-= safe_shell
+= Safe Shell
 
-Description goes here.
+Safe Shell lets you execute shell commands and get the resulting output, but without the security problems of Ruby's backtick operator.
+
+If you use backticks to process a file supplied by a user, a carefully crafted filename could allow execution of an arbitrary command:
+
+    file = ";blah"
+    `echo #{file}`
+    sh: blah: command not found
+    => "\n"
+
+Safe Shell solves this.
+
+    SafeShell.execute("echo", file)
+    => ";blah\n"
 
 == Note on Patches/Pull Requests
  
@@ -14,4 +26,4 @@ Description goes here.
 
 == Copyright
 
-Copyright (c) 2010 Pete Yandell. See LICENSE for details.
+Copyright (c) 2010 Envato, Ian Leitch, & Pete Yandell. See LICENSE for details.
