@@ -2,6 +2,25 @@
 
 Safe Shell lets you execute shell commands and get the resulting output, but without the security problems of Ruby's backtick operator.
 
+== Usage
+
+    gem install safe_shell
+
+    require 'safe_shell'
+    SafeShell.execute("echo", "Hello, world!")
+
+    # Send stdout and stderr to files:
+    SafeShell.execute("echo", "Hello, world!", :stdout => "output.txt", :stderr => "error.txt")
+
+SafeShell sets the $? operator to the process status, in the same way as the backtick operator.
+
+You can also use:
+
+    # Return true if the command returns a zero status:
+    SafeShell.execute?("echo", "Hello, world!")
+
+== Why?
+
 If you use backticks to process a file supplied by a user, a carefully crafted filename could allow execution of an arbitrary command:
 
     file = ";blah"
@@ -14,7 +33,11 @@ Safe Shell solves this.
     SafeShell.execute("echo", file)
     => ";blah\n"
 
-== Note on Patches/Pull Requests
+== Compatibility
+
+Tested with Ruby 1.8.7, but it should be happy on pretty much any Ruby version.
+
+== Developing
  
 * Fork the project.
 * Make your feature addition or bug fix.
@@ -23,6 +46,10 @@ Safe Shell solves this.
 * Commit, do not mess with rakefile, version, or history.
   (if you want to have your own version, that is fine but bump version in a commit by itself I can ignore when I pull)
 * Send me a pull request. Bonus points for topic branches.
+
+== Status
+
+In use on a few big sites, so should be pretty solid. There's not much to it, so I'm not expecting there'll be many releases.
 
 == Copyright
 
