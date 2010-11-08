@@ -9,14 +9,12 @@ Safe Shell lets you execute shell commands and get the resulting output, but wit
     require 'safe_shell'
     SafeShell.execute("echo", "Hello, world!")
 
+SafeShell sets the $? operator to the process status, in the same manner as the backtick operator.
+
     # Send stdout and stderr to files:
     SafeShell.execute("echo", "Hello, world!", :stdout => "output.txt", :stderr => "error.txt")
 
-SafeShell sets the $? operator to the process status, in the same way as the backtick operator.
-
-You can also use:
-
-    # Return true if the command returns a zero status:
+    # Return true if the command exits with a zero status:
     SafeShell.execute?("echo", "Hello, world!")
 
 == Why?
@@ -35,7 +33,7 @@ Safe Shell solves this.
 
 == Compatibility
 
-Tested with Ruby 1.8.7, but it should be happy on pretty much any Ruby version.
+Tested with Ruby 1.8.7, but it should be happy on pretty much any Ruby version. Maybe not so much on Windows.
 
 == Developing
  
@@ -49,7 +47,7 @@ Tested with Ruby 1.8.7, but it should be happy on pretty much any Ruby version.
 
 == Status
 
-In use on a few big sites, so should be pretty solid. There's not much to it, so I'm not expecting there'll be many releases.
+In use on at least one big site, so should be pretty solid. There's not much to it, so I'm not expecting there'll be many releases.
 
 == Copyright
 
