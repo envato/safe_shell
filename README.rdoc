@@ -17,6 +17,10 @@ SafeShell sets the $? operator to the process status, in the same manner as the 
     # Return true if the command exits with a zero status:
     SafeShell.execute?("echo", "Hello, world!")
 
+If you are not interested in the output of a long running command you can leave it running in the background with:
+
+  SafeShell.background("sleep", "2")
+
 == Why?
 
 If you use backticks to process a file supplied by a user, a carefully crafted filename could allow execution of an arbitrary command:
@@ -33,7 +37,7 @@ SafeShell solves this.
 
 == Compatibility
 
-Tested with Ruby 1.8.7, but it should be happy on pretty much any Ruby version. Maybe not so much on Windows.
+Tested with Ruby 1.8.7 and 1.9.2, but it should be happy on pretty much any Ruby version. Maybe not so much on Windows.
 
 == Developing
  
