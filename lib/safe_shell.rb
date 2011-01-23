@@ -21,4 +21,10 @@ module SafeShell
     execute(*args)
     $?.success?
   end
+
+  def self.background(command, *args)
+    fork do
+      exec(command, *args)
+    end
+  end
 end

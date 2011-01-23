@@ -18,6 +18,24 @@ describe "SafeShell" do
     $?.exitstatus.should == 1
   end
 
+  context "background" do
+    before do
+      File.delete("tmp/;date") if File.exists?("tmp/;date")
+    end
+
+    it "should safely handle dangerous characters in command arguments" do
+      SafeShell.background("touch", "tmp/;date")
+      sleep 0.1
+      File.exists?("tmp/;date").should be_true
+    end
+
+    it "should return immediately and leave the command running in the background" do
+      start_time = Time.now
+      SafeShell.background("sleep", "2")
+      (Time.now - start_time).should < 1
+    end
+  end
+
   context "output redirection" do
     before do
       File.delete("tmp/output.txt") if File.exists?("tmp/output.txt")
