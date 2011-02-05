@@ -6,7 +6,7 @@ begin
   Jeweler::Tasks.new do |gem|
     gem.name = "safe_shell"
     gem.summary = %Q{Safely execute shell commands and get their output.}
-    gem.description = %Q{Execute shell commands and get the resulting output, but without the security problems of Ruby’s backtick operator.}
+    gem.description = %Q{Execute shell commands and get the resulting output, but without the security problems of Ruby's backtick operator.}
     gem.email = "pete@notahat.com"
     gem.homepage = "http://github.com/envato/safe_shell"
     gem.authors = ["Envato", "Ian Leitch", "Pete Yandell"]

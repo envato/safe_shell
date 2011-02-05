@@ -18,6 +18,10 @@ describe "SafeShell" do
     $?.exitstatus.should == 1
   end
 
+  it "should handle a Pathname object passed as an argument" do
+    expect { SafeShell.execute("ls", Pathname.new("/tmp")) }.should_not raise_error
+  end
+
   context "output redirection" do
     before do
       File.delete("tmp/output.txt") if File.exists?("tmp/output.txt")

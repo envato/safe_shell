@@ -8,7 +8,7 @@ module SafeShell
       read_end.close
       STDOUT.reopen(new_stdout)
       STDERR.reopen(new_stderr)
-      exec(command, *args)
+      exec(command, *(args.map { |a| a.to_s }))
     end
     write_end.close
     output = read_end.read
