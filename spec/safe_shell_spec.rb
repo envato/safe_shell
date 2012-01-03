@@ -40,4 +40,16 @@ describe "SafeShell" do
     end
   end
 
+  context ".execute!" do
+    it "returns the output of the command" do
+      SafeShell.execute!("echo", "Hello, world!").should == "Hello, world!\n"
+    end
+
+    it "raises an exception of the command fails" do
+      expect {
+        SafeShell.execute!("test", "a", "=", "b")
+      }.should raise_error(SafeShell::CommandFailedException)
+    end
+  end
+
 end

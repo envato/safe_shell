@@ -1,4 +1,6 @@
 module SafeShell
+  class CommandFailedException < RuntimeError; end
+
   def self.execute(command, *args)
     opts = args.last.kind_of?(Hash) ? args.pop : {}
     read_end, write_end = IO.pipe
@@ -21,4 +23,17 @@ module SafeShell
     execute(*args)
     $?.success?
   end
+
+  def self.execute!(*args)
+    execute(*args).tap do
+      raise_command_failed_exception(*args) unless $?.success?
+    end
+  end
+
+private
+
+  def self.raise_command_failed_exception(*args)
+    raise CommandFailedException.new("Shell command #{args.inspect} failed with status #{$?}")
+  end
+
 end
