@@ -22,3 +22,6 @@ pkg/*
 
 ## PROJECT::SPECIFIC
 tmp/*
+
+## RVM
+.rvmrc
