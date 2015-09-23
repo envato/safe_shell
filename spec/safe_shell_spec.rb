@@ -1,5 +1,4 @@
 require 'safe_shell'
-require "pry"
 
 describe "SafeShell" do
 
