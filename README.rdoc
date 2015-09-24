@@ -38,6 +38,12 @@ SafeShell solves this.
 
 Tested with Ruby 1.8.7, but it should be happy on pretty much any Ruby version. Maybe not so much on Windows.
 
+== Test
+
+```
+bundle exec rake
+````
+
 == Developing
 
 * Fork the project.
