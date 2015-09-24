@@ -1,50 +1,64 @@
-= SafeShell
+# SafeShell
 
 SafeShell lets you execute shell commands and get the resulting output, but without the security problems of Ruby's backtick operator.
 
-== Usage
+## Usage
 
-    gem install safe_shell
+Install gem:
 
-    require 'safe_shell'
-    SafeShell.execute("echo", "Hello, world!")
+```
+gem install safe_shell
+```
+
+Use gem:
+
+```
+require 'safe_shell'
+SafeShell.execute("echo", "Hello, world!")
+```
 
 SafeShell sets the $? operator to the process status, in the same manner as the backtick operator.
 
-    # Send stdout and stderr to files:
-    SafeShell.execute("echo", "Hello, world!", :stdout => "output.txt", :stderr => "error.txt")
+```
+# Send stdout and stderr to files:
+SafeShell.execute("echo", "Hello, world!", :stdout => "output.txt", :stderr => "error.txt")
 
-    # Return true if the command exits with a zero status:
-    SafeShell.execute?("echo", "Hello, world!")
+# Return true if the command exits with a zero status:
+SafeShell.execute?("echo", "Hello, world!")
 
-    # Raise an exception if the command exits with a non-zero status:
-    SafeShell.execute!("echo", "Hello, world!")
+# Raise an exception if the command exits with a non-zero status:
+SafeShell.execute!("echo", "Hello, world!")
+```
 
-== Why?
+## Why?
 
 If you use backticks to process a file supplied by a user, a carefully crafted filename could allow execution of an arbitrary command:
 
-    file = ";blah"
-    `echo #{file}`
-    sh: blah: command not found
-    => "\n"
+```
+file = ";blah"
+`echo #{file}`
+sh: blah: command not found
+=> "\n"
+```
 
 SafeShell solves this.
 
-    SafeShell.execute("echo", file)
-    => ";blah\n"
+```
+SafeShell.execute("echo", file)
+=> ";blah\n"
+```
 
-== Compatibility
+## Compatibility
 
 Tested with Ruby 2.0.0 or newer, but it should be happy on pretty much any Ruby version. Maybe not so much on Windows.
 
-== Test
+## Test
 
 ```
 bundle exec rake
 ````
 
-== Developing
+## Developing
 
 * Fork the project.
 * Make your feature addition or bug fix.
@@ -54,10 +68,10 @@ bundle exec rake
   (if you want to have your own version, that is fine but bump version in a commit by itself I can ignore when I pull)
 * Send me a pull request. Bonus points for topic branches.
 
-== Status
+## Status
 
 In use on at least one big site, so should be pretty solid. There's not much to it, so I'm not expecting there'll be many releases.
 
-== Copyright
+## Copyright
 
-Copyright (c) 2010 Envato, Ian Leitch, & Pete Yandell. See LICENSE for details.
+Copyright (c) 2010 - 2015 Envato, Ian Leitch, & Pete Yandell. See LICENSE for details.
