@@ -15,7 +15,3 @@ rvm:
   - 2.2.2
   - 2.2.3
   - jruby-9000
-
-matrix:
-  allow_failures:
-    - rvm: jruby-9000
