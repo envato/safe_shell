@@ -1,4 +1,5 @@
 require 'safe_shell'
+require 'pathname'
 
 describe "SafeShell" do
 
