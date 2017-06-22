@@ -23,6 +23,9 @@ SafeShell sets the $? operator to the process status, in the same manner as the 
 # Send stdout and stderr to files:
 SafeShell.execute("echo", "Hello, world!", :stdout => "output.txt", :stderr => "error.txt")
 
+# Send additional environment variables:
+SafeShell.execute("echo", "Hello, world!", :env => { 'name' => 'john', 'foo' => 'bar' })
+
 # Return true if the command exits with a zero status:
 SafeShell.execute?("echo", "Hello, world!")
 
