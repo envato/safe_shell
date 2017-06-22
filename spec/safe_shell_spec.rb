@@ -12,8 +12,13 @@ describe "SafeShell" do
   end
 
   it "allows to add new env vars" do
-    expect(SafeShell.execute('env')).to_not include("HELLO=world")
-    expect(SafeShell.execute('env', env: {'HELLO' => 'world'})).to include("HELLO=world")
+    result = SafeShell.execute('env')
+    expect(result).to_not include("HELLO=world")
+    expect(result).to_not include("GOOD=world")
+
+    result = SafeShell.execute('env', env: {'HELLO' => 'world', 'GOOD' => 'day'})
+    expect(result).to include("HELLO=world")
+    expect(result).to include("GOOD=day")
   end
 
   it "should set $? to the exit status of the command" do
