@@ -11,6 +11,16 @@ describe "SafeShell" do
     expect(SafeShell.execute("echo", ";date")).to eql(";date\n")
   end
 
+  it "allows to add new env vars" do
+    result = SafeShell.execute('env')
+    expect(result).to_not include("HELLO=world")
+    expect(result).to_not include("GOOD=world")
+
+    result = SafeShell.execute('env', env: {'HELLO' => 'world', 'GOOD' => 'day'})
+    expect(result).to include("HELLO=world")
+    expect(result).to include("GOOD=day")
+  end
+
   it "should set $? to the exit status of the command" do
     SafeShell.execute("test", "a", "=", "a")
     expect($?.exitstatus).to eql(0)
