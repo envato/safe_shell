@@ -12,6 +12,7 @@ Gem::Specification.new do |s|
   s.description = %q{Execute shell commands and get the resulting output, but without the security problems of Ruby’s backtick operator.}
   s.license     = "MIT"
 
+  s.add_development_dependency "rake"
   s.add_development_dependency "rspec"
 
   s.files            = `git ls-files`.split("\n")

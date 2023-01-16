@@ -35,18 +35,18 @@ describe "SafeShell" do
 
   context "output redirection" do
     before do
-      File.delete("tmp/output.txt") if File.exists?("tmp/output.txt")
+      File.delete("tmp/output.txt") if File.exist?("tmp/output.txt")
     end
 
     it "should let you redirect stdout to a file" do
       SafeShell.execute("echo", "Hello, world!", :stdout => "tmp/output.txt")
-      expect(File.exists?("tmp/output.txt")).to eql(true)
+      expect(File.exist?("tmp/output.txt")).to eql(true)
       expect(File.read("tmp/output.txt")).to eql("Hello, world!\n")
     end
 
     it "should let you redirect stderr to a file" do
       SafeShell.execute("cat", "tmp/nonexistent-file", :stderr => "tmp/output.txt")
-      expect(File.exists?("tmp/output.txt")).to eql(true)
+      expect(File.exist?("tmp/output.txt")).to eql(true)
       expect(File.read("tmp/output.txt")).to eql("cat: tmp/nonexistent-file: No such file or directory\n")
     end
   end
