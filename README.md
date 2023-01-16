@@ -6,20 +6,20 @@ SafeShell lets you execute shell commands and get the resulting output, but with
 
 Install gem:
 
-```
+```sh
 gem install safe_shell
 ```
 
 Use gem:
 
-```
+```ruby
 require 'safe_shell'
 SafeShell.execute("echo", "Hello, world!")
 ```
 
 SafeShell sets the $? operator to the process status, in the same manner as the backtick operator.
 
-```
+```ruby
 # Send stdout and stderr to files:
 SafeShell.execute("echo", "Hello, world!", :stdout => "output.txt", :stderr => "error.txt")
 
@@ -37,7 +37,7 @@ SafeShell.execute!("echo", "Hello, world!")
 
 If you use backticks to process a file supplied by a user, a carefully crafted filename could allow execution of an arbitrary command:
 
-```
+```ruby
 file = ";blah"
 `echo #{file}`
 sh: blah: command not found
@@ -46,7 +46,7 @@ sh: blah: command not found
 
 SafeShell solves this.
 
-```
+```ruby
 SafeShell.execute("echo", file)
 => ";blah\n"
 ```
@@ -57,7 +57,7 @@ Tested with Ruby 2.0.0 or newer, but it should be happy on pretty much any Ruby 
 
 ## Test
 
-```
+```sh
 bundle exec rake
 ````
 
