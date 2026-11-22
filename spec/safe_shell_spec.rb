@@ -369,6 +369,16 @@ describe "SafeShell" do
       expect(File.read("tmp/error.txt")).to eql("err\n")
     end
 
+    it "lets you redirect both streams to the same file" do
+      SafeShell.execute("sh", "-c", "echo out; echo err >&2; echo out2", :stdout => "tmp/output.txt", :stderr => "tmp/output.txt")
+      expect(File.read("tmp/output.txt")).to eql("out\nerr\nout2\n")
+    end
+
+    it "treats two spellings of one path as the same file" do
+      SafeShell.execute("sh", "-c", "echo out; echo err >&2; echo out2", :stdout => "tmp/output.txt", :stderr => "./tmp/../tmp/output.txt")
+      expect(File.read("tmp/output.txt")).to eql("out\nerr\nout2\n")
+    end
+
     it "should let you redirect stdout to a file" do
       SafeShell.execute("echo", "Hello, world!", :stdout => "tmp/output.txt")
       expect(File.exist?("tmp/output.txt")).to eql(true)
