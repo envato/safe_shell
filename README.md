@@ -61,6 +61,8 @@ SafeShell.execute("echo", file)
 
 The first argument is always the program to run and is never passed to a shell, even when it is the only argument. Each remaining argument reaches the program as a single, literal argument. A command string such as `"echo #{file}"` is therefore looked up as a program named `echo #{file}` and fails with `Errno::ENOENT`; pass the program and its arguments separately instead.
 
+A program that cannot be found raises `Errno::ENOENT` from all three methods, since no command ran and there is no status to report: `execute?` does not return false and `execute!` does not raise `CommandFailedException`.
+
 ## Compatibility
 
 Tested on every push against Ruby 3.0 through 4.0, JRuby, and TruffleRuby, on Linux. The gem requires Ruby 3.0 or newer. It is not tested on Windows.
