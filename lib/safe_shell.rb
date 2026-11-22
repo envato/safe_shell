@@ -8,9 +8,39 @@
 #   SafeShell.execute("ls", "-l", path)
 module SafeShell
   # Raised by {SafeShell.execute!} when the command exits with a non-zero
-  # status or is terminated by a signal. The message names the command and
-  # its arguments, but not the options passed with them.
-  class CommandFailedException < RuntimeError; end
+  # status or is terminated by a signal. The message it composes names the
+  # command and its arguments, but not the options passed with them.
+  class CommandFailedException < RuntimeError
+    # @return [String, nil] the program that was run
+    attr_reader :command
+    # @return [Array<String>] the arguments the program was given, without
+    #   the options
+    attr_reader :args
+    # @return [Process::Status, nil] how the program exited; its
+    #   +exitstatus+ is nil when a signal terminated it
+    attr_reader :status
+    # @return [String, nil] what the program wrote to stdout and stderr,
+    #   less any stream redirected to a file
+    attr_reader :output
+
+    # Builds the exception. Without a message, one is composed from the
+    # command, arguments and status when a command is given. The data is
+    # nil, or empty for +args+, when not given.
+    #
+    # @param message [String, nil] the message, as for any exception
+    # @param command [String, nil] the program that was run
+    # @param args [Array<String>] its arguments, without the options
+    # @param status [Process::Status, nil] how it exited
+    # @param output [String, nil] what it wrote
+    def initialize(message = nil, command: nil, args: [], status: nil, output: nil)
+      @command = command
+      @args = args
+      @status = status
+      @output = output
+      message ||= "Shell command #{[command, *args].inspect} failed with status #{status}" if command
+      super(message)
+    end
+  end
 
   # Seconds a child gets to exit after a signal before the next step.
   GRACE_PERIOD = 1.0
@@ -133,15 +163,16 @@ module SafeShell
   # @raise [CommandFailedException] if the command exits with a non-zero
   #   status or is terminated by a signal
   # @raise (see .execute)
-  def self.execute!(*args)
-    execute(*args).tap do
-      unless $?.success?
-        # Leave the options hash out of the message: :env is where callers
-        # put credentials for the child process.
-        argv = args.last.kind_of?(Hash) ? args[0...-1] : args
-        raise CommandFailedException.new("Shell command #{argv.inspect} failed with status #{$?}")
-      end
-    end
+  def self.execute!(command, *args)
+    output = execute(command, *args)
+    return output if $?.success?
+
+    # The options are left out, since :env may hold credentials for the
+    # child process.
+    args.pop if args.last.kind_of?(Hash)
+    raise CommandFailedException.new(
+      :command => command.to_s, :args => args.map { |a| a.to_s }, :status => $?, :output => output
+    )
   end
 
   # Reaps pid, sending TERM and then KILL if it is still running. Each wait

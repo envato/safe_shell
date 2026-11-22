@@ -429,6 +429,38 @@ RSpec.describe SafeShell do
       }.to raise_error(SafeShell::CommandFailedException, /\["test", "a", "=", "b"\] failed with status/)
     end
 
+    it "puts the command, arguments, status and output on the exception" do
+      expect {
+        SafeShell.execute!("sh", "-c", "echo out; echo err >&2; exit 3", Pathname.new("x"))
+      }.to raise_error(SafeShell::CommandFailedException) { |error|
+        expect(error.command).to eql("sh")
+        expect(error.args).to eql(["-c", "echo out; echo err >&2; exit 3", "x"])
+        expect(error.status.exitstatus).to eql(3)
+        expect(error.output).to eql("out\nerr\n")
+      }
+    end
+
+    it "reports a command terminated by a signal through the exception's status" do
+      expect {
+        SafeShell.execute!("sh", "-c", "kill -TERM $$")
+      }.to raise_error(SafeShell::CommandFailedException) { |error|
+        expect(error.status.signaled?).to eql(true)
+        expect(error.status.termsig).to eql(Signal.list["TERM"])
+        expect(error.status.exitstatus).to be_nil
+      }
+    end
+
+    it "can be constructed and raised with a message alone, or with nothing" do
+      expect { raise SafeShell::CommandFailedException }.to raise_error(SafeShell::CommandFailedException, "SafeShell::CommandFailedException")
+      expect { raise SafeShell::CommandFailedException, "boom" }.to raise_error(SafeShell::CommandFailedException, "boom")
+      error = SafeShell::CommandFailedException.new("boom")
+      expect(error.message).to eql("boom")
+      expect(error.command).to be_nil
+      expect(error.args).to eql([])
+      expect(error.status).to be_nil
+      expect(error.output).to be_nil
+    end
+
     it "keeps environment variables out of the exception message" do
       expect {
         SafeShell.execute!("false", :env => { "SECRET" => "hunter2" })
