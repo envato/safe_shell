@@ -1,12 +1,13 @@
-require 'spec_helper'
-require 'safe_shell'
-require 'pathname'
-require 'timeout'
-require 'tmpdir'
-require 'fileutils'
+# frozen_string_literal: true
+
+require "spec_helper"
+require "safe_shell"
+require "pathname"
+require "timeout"
+require "tmpdir"
+require "fileutils"
 
 RSpec.describe SafeShell do
-
   it "returns the output of the command" do
     expect(SafeShell.execute("echo", "Hello, world!")).to eql("Hello, world!\n")
   end
@@ -25,7 +26,7 @@ RSpec.describe SafeShell do
 
   it "never passes a command with only options to a shell" do
     expect {
-      SafeShell.execute("echo $HOME", :env => { "HOME" => "/nowhere" })
+      SafeShell.execute("echo $HOME", env: { "HOME" => "/nowhere" })
     }.to raise_error(Errno::ENOENT)
   end
 
@@ -34,7 +35,7 @@ RSpec.describe SafeShell do
     expect(result).to_not include("HELLO=world")
     expect(result).to_not include("GOOD=day")
 
-    result = SafeShell.execute("env", :env => { "HELLO" => "world", "GOOD" => "day" })
+    result = SafeShell.execute("env", env: { "HELLO" => "world", "GOOD" => "day" })
     expect(result).to include("HELLO=world")
     expect(result).to include("GOOD=day")
     expect(result).to include("PATH=#{ENV["PATH"]}")
@@ -66,7 +67,7 @@ RSpec.describe SafeShell do
 
     it "closes the redirect files it opens" do
       before = open_descriptors
-      5.times { SafeShell.execute("echo", "x", :stdout => "tmp/output.txt", :stderr => "tmp/error.txt") }
+      5.times { SafeShell.execute("echo", "x", stdout: "tmp/output.txt", stderr: "tmp/error.txt") }
       expect(open_descriptors).to eql(before)
     end
 
@@ -82,7 +83,7 @@ RSpec.describe SafeShell do
       before = open_descriptors
       5.times do
         expect {
-          SafeShell.execute("echo", "x", :stdout => "tmp/output.txt", :stderr => "tmp/no-such-dir/error.txt")
+          SafeShell.execute("echo", "x", stdout: "tmp/output.txt", stderr: "tmp/no-such-dir/error.txt")
         }.to raise_error(Errno::ENOENT)
       end
       expect(open_descriptors).to eql(before)
@@ -93,7 +94,7 @@ RSpec.describe SafeShell do
     end
 
     def spawned_pid
-      allow(SafeShell).to receive(:spawn).and_wrap_original { |spawn, *args| @spawned = spawn.call(*args) }
+      allow(SafeShell).to(receive(:spawn).and_wrap_original { |spawn, *args| @spawned = spawn.call(*args) })
       lambda { @spawned }
     end
 
@@ -113,7 +114,7 @@ RSpec.describe SafeShell do
       pid = spawned_pid
       before = open_descriptors
       expect {
-        Timeout.timeout(0.5) { SafeShell.execute("sleep", "30", :stdout => "tmp/output.txt") }
+        Timeout.timeout(0.5) { SafeShell.execute("sleep", "30", stdout: "tmp/output.txt") }
       }.to raise_error(Timeout::Error)
       expect($?.pid).to eql(pid.call)
       expect($?.termsig).to eql(Signal.list["TERM"])
@@ -148,10 +149,15 @@ RSpec.describe SafeShell do
     it "gives the child the whole grace period even when its thread is woken early" do
       pid = spawned_pid
       waiter = Thread.current
-      sibling = Thread.new { loop { waiter.wakeup; sleep 0.001 } }
+      sibling = Thread.new do
+        loop do
+          waiter.wakeup
+          sleep 0.001
+        end
+      end
       begin
         expect {
-          Timeout.timeout(0.3) { SafeShell.execute("sh", "-c", %q(trap 'kill $!; sleep 0.2; exit 0' TERM; sleep 30 & wait)) }
+          Timeout.timeout(0.3) { SafeShell.execute("sh", "-c", "trap 'kill $!; sleep 0.2; exit 0' TERM; sleep 30 & wait") }
         }.to raise_error(Timeout::Error)
       ensure
         sibling.kill
@@ -281,7 +287,7 @@ RSpec.describe SafeShell do
       before = open_descriptors
       begin
         expect {
-          Timeout.timeout(0.3) { SafeShell.execute("sleep", "30", :stdout => "tmp/output.txt", :stderr => "tmp/error.txt") }
+          Timeout.timeout(0.3) { SafeShell.execute("sleep", "30", stdout: "tmp/output.txt", stderr: "tmp/error.txt") }
         }.to raise_error(RuntimeError, "raised from trap handler")
       ensure
         armed = false
@@ -332,7 +338,7 @@ RSpec.describe SafeShell do
 
     it "reaps a child that has already exited" do
       read_end, write_end = IO.pipe
-      pid = spawn("true", :out => write_end)
+      pid = spawn("true", out: write_end)
       write_end.close
       read_end.read
       read_end.close
@@ -363,36 +369,36 @@ RSpec.describe SafeShell do
     end
 
     it "returns only stderr when stdout is redirected" do
-      output = SafeShell.execute("sh", "-c", "echo out; echo err >&2", :stdout => "tmp/output.txt")
+      output = SafeShell.execute("sh", "-c", "echo out; echo err >&2", stdout: "tmp/output.txt")
       expect(output).to eql("err\n")
       expect(File.read("tmp/output.txt")).to eql("out\n")
     end
 
     it "returns nothing when both streams are redirected" do
-      output = SafeShell.execute("sh", "-c", "echo out; echo err >&2", :stdout => "tmp/output.txt", :stderr => "tmp/error.txt")
+      output = SafeShell.execute("sh", "-c", "echo out; echo err >&2", stdout: "tmp/output.txt", stderr: "tmp/error.txt")
       expect(output).to eql("")
       expect(File.read("tmp/output.txt")).to eql("out\n")
       expect(File.read("tmp/error.txt")).to eql("err\n")
     end
 
     it "lets you redirect both streams to the same file" do
-      SafeShell.execute("sh", "-c", "echo out; echo err >&2; echo out2", :stdout => "tmp/output.txt", :stderr => "tmp/output.txt")
+      SafeShell.execute("sh", "-c", "echo out; echo err >&2; echo out2", stdout: "tmp/output.txt", stderr: "tmp/output.txt")
       expect(File.read("tmp/output.txt")).to eql("out\nerr\nout2\n")
     end
 
     it "treats two spellings of one path as the same file" do
-      SafeShell.execute("sh", "-c", "echo out; echo err >&2; echo out2", :stdout => "tmp/output.txt", :stderr => "./tmp/../tmp/output.txt")
+      SafeShell.execute("sh", "-c", "echo out; echo err >&2; echo out2", stdout: "tmp/output.txt", stderr: "./tmp/../tmp/output.txt")
       expect(File.read("tmp/output.txt")).to eql("out\nerr\nout2\n")
     end
 
     it "lets you redirect stdout to a file" do
-      output = SafeShell.execute("echo", "Hello, world!", :stdout => "tmp/output.txt")
+      output = SafeShell.execute("echo", "Hello, world!", stdout: "tmp/output.txt")
       expect(output).to eql("")
       expect(File.read("tmp/output.txt")).to eql("Hello, world!\n")
     end
 
     it "lets you redirect stderr to a file" do
-      output = SafeShell.execute("sh", "-c", "echo err >&2", :stderr => "tmp/output.txt")
+      output = SafeShell.execute("sh", "-c", "echo err >&2", stderr: "tmp/output.txt")
       expect(output).to eql("")
       expect(File.read("tmp/output.txt")).to eql("err\n")
     end
@@ -404,33 +410,33 @@ RSpec.describe SafeShell do
     after { FileUtils.remove_entry(File.dirname(untouched)) }
 
     it "accepts a Hash of options passed with **" do
-      options = { :env => { "SAFE_SHELL_SPEC" => "set" } }
+      options = { env: { "SAFE_SHELL_SPEC" => "set" } }
       expect(SafeShell.execute("sh", "-c", "printf %s \"$SAFE_SHELL_SPEC\"", **options)).to eql("set")
     end
 
     it "raises ArgumentError for an option it does not know, running nothing" do
       expect(SafeShell).not_to receive(:spawn)
-      expect { SafeShell.execute("pwd", :chdir => "/") }.to raise_error(ArgumentError, /chdir/)
+      expect { SafeShell.execute("pwd", chdir: "/") }.to raise_error(ArgumentError, /chdir/)
       expect { SafeShell.execute("pwd", "stdout" => untouched) }.to raise_error(ArgumentError)
-      expect { SafeShell.execute?("pwd", :chdir => "/") }.to raise_error(ArgumentError, /chdir/)
-      expect { SafeShell.execute!("pwd", :chdir => "/") }.to raise_error(ArgumentError, /chdir/)
+      expect { SafeShell.execute?("pwd", chdir: "/") }.to raise_error(ArgumentError, /chdir/)
+      expect { SafeShell.execute!("pwd", chdir: "/") }.to raise_error(ArgumentError, /chdir/)
     end
 
     it "passes the options through execute?" do
       script = 'test "$SAFE_SHELL_SPEC" = set'
-      expect(SafeShell.execute?("sh", "-c", script, :env => { "SAFE_SHELL_SPEC" => "set" })).to eql(true)
-      expect(SafeShell.execute?("sh", "-c", script, :env => { "SAFE_SHELL_SPEC" => "other" })).to eql(false)
+      expect(SafeShell.execute?("sh", "-c", script, env: { "SAFE_SHELL_SPEC" => "set" })).to eql(true)
+      expect(SafeShell.execute?("sh", "-c", script, env: { "SAFE_SHELL_SPEC" => "other" })).to eql(false)
     end
 
     it "passes the options through execute!" do
-      options = { :env => { "SAFE_SHELL_SPEC" => "set" } }
+      options = { env: { "SAFE_SHELL_SPEC" => "set" } }
       expect(SafeShell.execute!("sh", "-c", "printf %s \"$SAFE_SHELL_SPEC\"", **options)).to eql("set")
     end
 
     [
-      ["a symbol-keyed Hash", lambda { |path| { :stdout => path, :env => { "PATH" => "/nonexistent" } } }],
+      ["a symbol-keyed Hash", lambda { |path| { stdout: path, env: { "PATH" => "/nonexistent" } } }],
       ["a string-keyed Hash", lambda { |path| { "stdout" => path } }],
-      ["a Hash subclass", lambda { |path| Class.new(Hash).new.merge!(:stdout => path) }],
+      ["a Hash subclass", lambda { |path| Class.new(Hash).new.merge!(stdout: path) }]
     ].each do |description, build|
       it "raises ArgumentError for #{description} as the last argument, running nothing" do
         hash = build.call(untouched)
@@ -444,11 +450,11 @@ RSpec.describe SafeShell do
     end
 
     it "raises ArgumentError for a Hash among the arguments" do
-      expect { SafeShell.execute("echo", { :stdout => untouched }, "x") }.to raise_error(ArgumentError)
+      expect { SafeShell.execute("echo", { stdout: untouched }, "x") }.to raise_error(ArgumentError)
     end
 
     it "raises ArgumentError for a Hash as the command, running nothing" do
-      hash = { :env => { "SECRET" => "hunter2" } }
+      hash = { env: { "SECRET" => "hunter2" } }
       expect(SafeShell).not_to receive(:spawn)
       [:execute, :execute?, :execute!].each do |method|
         expect { SafeShell.public_send(method, hash) }.to raise_error(ArgumentError, /cannot be a Hash/) { |error|
@@ -458,7 +464,7 @@ RSpec.describe SafeShell do
     end
 
     it "keeps the Hash out of the ArgumentError message" do
-      expect { SafeShell.execute("echo", { :env => { "SECRET" => "hunter2" } }) }.to raise_error(ArgumentError) { |error|
+      expect { SafeShell.execute("echo", { env: { "SECRET" => "hunter2" } }) }.to raise_error(ArgumentError) { |error|
         expect(error.message).not_to include("hunter2")
       }
     end
@@ -531,7 +537,7 @@ RSpec.describe SafeShell do
 
     it "keeps environment variables out of the exception message" do
       expect {
-        SafeShell.execute!("false", :env => { "SECRET" => "hunter2" })
+        SafeShell.execute!("false", env: { "SECRET" => "hunter2" })
       }.to raise_error(SafeShell::CommandFailedException) { |error|
         expect(error.message).to include('["false"]')
         expect(error.message).not_to include("hunter2")
@@ -539,5 +545,4 @@ RSpec.describe SafeShell do
       }
     end
   end
-
 end
