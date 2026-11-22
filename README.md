@@ -19,6 +19,14 @@ SafeShell.execute("echo", "Hello, world!")
 
 SafeShell sets the $? operator to the process status, in the same manner as the backtick operator.
 
+If the call is interrupted, by a timeout or a signal, SafeShell sends the command TERM, then KILL if it is still running a second later, and reaps it, so $? describes the terminated command. The call returns once the command has been reaped, normally up to a second after the interruption. Only the command's own process is signalled, not any processes it started. The exceptions:
+
+- A command that has changed user cannot be signalled and is left running; $? is nil or unchanged from the previous command.
+- A command that has not died a second after KILL is left unreaped; $? is nil or unchanged from the previous command.
+- A command that something else in the process has already reaped is not signalled; $? is nil or unchanged from the previous command.
+- On CRuby, an exception raised from a signal handler installed with `trap` while the command is being waited on cuts the wait short and the command is killed at once; landing elsewhere in the cleanup, it is delivered after the ordinary TERM and KILL. JRuby delivers it after the cleanup.
+- Deferred interrupts are delivered while the command is being waited on, even inside a caller's `Thread.handle_interrupt(... => :never)`.
+
 ```ruby
 # Send stdout and stderr to files:
 SafeShell.execute("echo", "Hello, world!", :stdout => "output.txt", :stderr => "error.txt")
