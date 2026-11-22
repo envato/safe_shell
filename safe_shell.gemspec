@@ -16,6 +16,7 @@ Gem::Specification.new do |s|
     "homepage_uri"      => s.homepage,
     "source_code_uri"   => "#{s.homepage}/tree/v#{s.version}",
     "bug_tracker_uri"   => "#{s.homepage}/issues",
+    "changelog_uri"     => "#{s.homepage}/releases/tag/v#{s.version}",
   }
 
   s.files            = Dir["lib/**/*.rb"] + ["LICENSE", "README.md"]
