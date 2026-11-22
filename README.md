@@ -53,7 +53,7 @@ SafeShell.execute("echo", file)
 
 ## Compatibility
 
-Tested with Ruby 2.0.0 or newer, but it should be happy on pretty much any Ruby version. Maybe not so much on Windows.
+Tested on every push against Ruby 2.0 through 4.0, JRuby, and TruffleRuby, on Linux. The gem requires Ruby 2.0 or newer. It is not tested on Windows.
 
 ## Test
 
