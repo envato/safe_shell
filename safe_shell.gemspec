@@ -21,7 +21,7 @@ Gem::Specification.new do |s|
   s.add_development_dependency "rake"
   s.add_development_dependency "rspec"
 
-  s.files            = `git ls-files`.split("\n")
+  s.files            = Dir["lib/**/*.rb"] + ["LICENSE", "README.md"]
   s.require_paths    = ["lib"]
   s.extra_rdoc_files = ["LICENSE", "README.md"]
 
