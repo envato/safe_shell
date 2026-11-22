@@ -6,11 +6,17 @@ Gem::Specification.new do |s|
   s.version     = SafeShell::VERSION
   s.platform    = Gem::Platform::RUBY
   s.authors     = ["Envato", "Ian Leitch", "Pete Yandell"]
-  s.email       = ["pete@notahat.com"]
+  s.email       = ["rubygems@envato.com"]
   s.homepage    = "https://github.com/envato/#{s.name}"
   s.summary     = "Safely execute shell commands and get their output."
   s.description = "Execute shell commands and get the resulting output, but without the security problems of Ruby's backtick operator."
   s.license     = "MIT"
+  s.metadata    = {
+    "allowed_push_host" => "https://rubygems.org",
+    "homepage_uri"      => s.homepage,
+    "source_code_uri"   => "#{s.homepage}/tree/v#{s.version}",
+    "bug_tracker_uri"   => "#{s.homepage}/issues",
+  }
 
   s.add_development_dependency "rake"
   s.add_development_dependency "rspec"
