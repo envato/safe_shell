@@ -98,15 +98,16 @@ module SafeShell
         new_stdout = stdout ? File.open(stdout, "w+") : write_end
         # One file for both streams is opened once, so the streams share an
         # offset and neither overwrites the other.
-        new_stderr = if stderr.nil?
-          write_end
-        elsif stdout && File.identical?(new_stdout, stderr)
-          new_stdout
-        else
-          File.open(stderr, "w+")
-        end
+        new_stderr =
+          if stderr.nil?
+            write_end
+          elsif stdout && File.identical?(new_stdout, stderr)
+            new_stdout
+          else
+            File.open(stderr, "w+")
+          end
         # A command that reads stdin gets EOF at once rather than blocking.
-        spawn_opts = {:in => File::NULL, :out => new_stdout, :err => new_stderr}
+        spawn_opts = { :in => File::NULL, :out => new_stdout, :err => new_stderr }
 
         # Passing the program as a two-element array forces Kernel#spawn to
         # exec it directly. A bare String with no further arguments would go
@@ -184,8 +185,10 @@ module SafeShell
   # is left, and $? is nil or unchanged.
   def self.terminate_and_reap(pid)
     return if Process.waitpid(pid, Process::WNOHANG)
+
     Process.kill("TERM", pid)
     return if reap_by(pid, now + GRACE_PERIOD)
+
     Process.kill("KILL", pid)
     reap_by(pid, now + GRACE_PERIOD)
   rescue Errno::ESRCH, Errno::ECHILD
@@ -221,6 +224,7 @@ module SafeShell
       reaped = Process.waitpid(pid, Process::WNOHANG)
       return reaped if reaped
       return nil if now > deadline
+
       sleep POLL_INTERVAL
     end
   end

@@ -6,7 +6,6 @@ require 'tmpdir'
 require 'fileutils'
 
 RSpec.describe SafeShell do
-
   it "returns the output of the command" do
     expect(SafeShell.execute("echo", "Hello, world!")).to eql("Hello, world!\n")
   end
@@ -539,5 +538,4 @@ RSpec.describe SafeShell do
       }
     end
   end
-
 end
