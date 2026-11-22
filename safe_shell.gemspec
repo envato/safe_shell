@@ -18,9 +18,6 @@ Gem::Specification.new do |s|
     "bug_tracker_uri"   => "#{s.homepage}/issues",
   }
 
-  s.add_development_dependency "rake"
-  s.add_development_dependency "rspec"
-
   s.files            = Dir["lib/**/*.rb"] + ["LICENSE", "README.md"]
   s.require_paths    = ["lib"]
   s.extra_rdoc_files = ["LICENSE", "README.md"]
