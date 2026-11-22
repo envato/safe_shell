@@ -55,7 +55,7 @@ The first argument is always the program to run and is never passed to a shell, 
 
 ## Compatibility
 
-Tested on every push against Ruby 2.0 through 4.0, JRuby, and TruffleRuby, on Linux. The gem requires Ruby 2.0 or newer. It is not tested on Windows.
+Tested on every push against Ruby 3.0 through 4.0, JRuby, and TruffleRuby, on Linux. The gem requires Ruby 3.0 or newer. It is not tested on Windows.
 
 ## Test
 
