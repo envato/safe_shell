@@ -363,9 +363,31 @@ describe "SafeShell" do
     end
   end
 
+  context ".execute?" do
+    it "returns true if the command succeeds" do
+      expect(SafeShell.execute?("true")).to eql(true)
+    end
+
+    it "returns false if the command fails" do
+      expect(SafeShell.execute?("false")).to eql(false)
+    end
+
+    it "raises Errno::ENOENT rather than returning false if the program cannot be found" do
+      expect {
+        SafeShell.execute?("safe-shell-no-such-command")
+      }.to raise_error(Errno::ENOENT)
+    end
+  end
+
   context ".execute!" do
     it "returns the output of the command" do
       expect(SafeShell.execute!("echo", "Hello, world!")).to eql("Hello, world!\n")
+    end
+
+    it "raises Errno::ENOENT rather than CommandFailedException if the program cannot be found" do
+      expect {
+        SafeShell.execute!("safe-shell-no-such-command")
+      }.to raise_error(Errno::ENOENT)
     end
 
     it "raises an exception if the command fails" do
