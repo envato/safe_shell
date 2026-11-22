@@ -9,10 +9,16 @@ module SafeShell
     env = opts[:env]
     opts = {:in => read_end, :out => new_stdout, :err => new_stderr}
 
+    # Passing the program as a two-element array forces Kernel#spawn to exec
+    # it directly. A bare String with no further arguments would go through
+    # /bin/sh -c whenever it contains shell metacharacters.
+    program = [command.to_s, command.to_s]
+    argv = args.map { |a| a.to_s }
+
     pid = if env
-      spawn(env, command, *(args.map { |a| a.to_s }), opts)
+      spawn(env, program, *argv, opts)
     else
-      spawn(command, *(args.map { |a| a.to_s }), opts)
+      spawn(program, *argv, opts)
     end
 
     write_end.close

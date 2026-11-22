@@ -11,6 +11,18 @@ describe "SafeShell" do
     expect(SafeShell.execute("echo", ";date")).to eql(";date\n")
   end
 
+  it "never passes a command with no arguments to a shell" do
+    expect {
+      SafeShell.execute("echo ;echo INJECTED")
+    }.to raise_error(Errno::ENOENT)
+  end
+
+  it "never passes a command with only options to a shell" do
+    expect {
+      SafeShell.execute("echo $HOME", :env => { "HOME" => "/nowhere" })
+    }.to raise_error(Errno::ENOENT)
+  end
+
   it "allows to add new env vars" do
     result = SafeShell.execute('env')
     expect(result).to_not include("HELLO=world")
