@@ -13,9 +13,26 @@ RSpec.describe SafeShell do
   end
 
   it "passes shell metacharacters in arguments to the command literally" do
-    ["$HOME", "`date`", "$(date)", "'quoted'", '"quoted"', "a|b", "a>b", "a&&b", "a;b", "*", "~", "a\nb", "", "-n"].each do |arg|
+    [
+      "$HOME", "`date`", "$(date)", "'quoted'", '"quoted"', "a|b", "a>b", "a<b", "a&&b", "a&", "a;b", "*", "~", "a\nb", "",
+      "-n", "a b", "a\tb", "a\\b", "%s", "#a", "!a", "{a,b}", "café"
+    ].each do |arg|
       expect(SafeShell.execute("printf", "%s", arg)).to eql(arg), "for #{arg.inspect}"
     end
+  end
+
+  it "passes generated strings of shell metacharacters to the command literally" do
+    alphabet = [*" \t\n$`'\"\\|&;<>()[]{}*?~#!%=-".chars, "a", "é"]
+    50.times do
+      arg = Array.new(rand(1..20)) { alphabet.sample }.join
+      expect(SafeShell.execute("printf", "%s", arg)).to eql(arg), "for #{arg.inspect}"
+    end
+  end
+
+  it "returns output larger than a pipe holds" do
+    output = Timeout.timeout(5) { SafeShell.execute("head", "-c", "300000", "/dev/zero") }
+    expect(output.bytesize).to eql(300_000)
+    expect($?.exitstatus).to eql(0)
   end
 
   it "never passes a command with no arguments to a shell" do
@@ -39,6 +56,14 @@ RSpec.describe SafeShell do
     expect(result).to include("HELLO=world")
     expect(result).to include("GOOD=day")
     expect(result).to include("PATH=#{ENV["PATH"]}")
+  end
+
+  it "unsets an environment variable given as nil" do
+    ENV["SAFE_SHELL_SPEC_UNSET"] = "set"
+    expect(SafeShell.execute("env")).to include("SAFE_SHELL_SPEC_UNSET=set")
+    expect(SafeShell.execute("env", env: { "SAFE_SHELL_SPEC_UNSET" => nil })).not_to include("SAFE_SHELL_SPEC_UNSET")
+  ensure
+    ENV.delete("SAFE_SHELL_SPEC_UNSET")
   end
 
   it "gives the command an empty stdin rather than blocking" do
@@ -133,6 +158,22 @@ RSpec.describe SafeShell do
       }.to raise_error(Timeout::Error)
       expect($?.pid).to eql(pid)
       expect($?.termsig).to eql(Signal.list["TERM"])
+    end
+
+    it "lets a child blocked writing to a full pipe exit when interrupted" do
+      pid = nil
+      allow(SafeShell).to receive(:spawn).and_wrap_original do |spawn, *args|
+        @spawned = pid = spawn.call(*args)
+        sleep 0.3
+        pid
+      end
+      started = now
+      expect {
+        Timeout.timeout(0.1) { SafeShell.execute("sh", "-c", 'trap "" TERM; exec yes') }
+      }.to raise_error(Timeout::Error)
+      expect(now - started).to be < 1
+      expect($?.pid).to eql(pid)
+      expect($?.termsig).to eql(Signal.list["PIPE"]).or be_nil
     end
 
     it "kills the child if it ignores TERM" do
@@ -264,6 +305,7 @@ RSpec.describe SafeShell do
       allow(Process).to receive(:kill).with("KILL", anything).and_wrap_original do |kill, *args|
         armed ? raise(Errno::EPERM) : kill.call(*args)
       end
+      started = now
       begin
         expect {
           Timeout.timeout(0.3) { SafeShell.execute("sh", "-c", 'trap "" TERM; exec sleep 30') }
@@ -272,6 +314,7 @@ RSpec.describe SafeShell do
         armed = false
         trap("USR1", previous)
       end
+      expect(now - started).to be < 1
       expect { Process.kill(0, pid.call) }.not_to raise_error
     end
 
@@ -402,6 +445,25 @@ RSpec.describe SafeShell do
       expect(output).to eql("")
       expect(File.read("tmp/output.txt")).to eql("err\n")
     end
+
+    it "accepts a Pathname for each redirect file" do
+      output = SafeShell.execute("sh", "-c", "echo out; echo err >&2", stdout: Pathname.new("tmp/output.txt"), stderr: Pathname.new("tmp/error.txt"))
+      expect(output).to eql("")
+      expect(File.read("tmp/output.txt")).to eql("out\n")
+      expect(File.read("tmp/error.txt")).to eql("err\n")
+    end
+
+    it "truncates the file stdout is redirected to" do
+      File.write("tmp/output.txt", "left by an earlier call\n")
+      SafeShell.execute("echo", "out", stdout: "tmp/output.txt")
+      expect(File.read("tmp/output.txt")).to eql("out\n")
+    end
+
+    it "truncates the file stderr is redirected to" do
+      File.write("tmp/error.txt", "left by an earlier call\n")
+      SafeShell.execute("sh", "-c", "echo err >&2", stderr: "tmp/error.txt")
+      expect(File.read("tmp/error.txt")).to eql("err\n")
+    end
   end
 
   context "options" do
@@ -477,6 +539,10 @@ RSpec.describe SafeShell do
 
     it "returns false if the command fails" do
       expect(SafeShell.execute?("false")).to eql(false)
+    end
+
+    it "returns nil if a signal terminates the command" do
+      expect(SafeShell.execute?("sh", "-c", "kill -TERM $$")).to be_nil
     end
 
     it "raises Errno::ENOENT rather than returning false if the program cannot be found" do
