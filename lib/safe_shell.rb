@@ -7,7 +7,8 @@ module SafeShell
     new_stdout = opts[:stdout] ? File.open(opts[:stdout], "w+") : write_end
     new_stderr = opts[:stderr] ? File.open(opts[:stderr], "w+") : write_end
     env = opts[:env]
-    opts = {:in => read_end, :out => new_stdout, :err => new_stderr}
+    # A command that reads stdin gets EOF at once rather than blocking.
+    opts = {:in => File::NULL, :out => new_stdout, :err => new_stderr}
 
     # Passing the program as a two-element array forces Kernel#spawn to exec
     # it directly. A bare String with no further arguments would go through

@@ -1,5 +1,6 @@
 require 'safe_shell'
 require 'pathname'
+require 'timeout'
 
 describe "SafeShell" do
 
@@ -31,6 +32,12 @@ describe "SafeShell" do
     result = SafeShell.execute('env', env: {'HELLO' => 'world', 'GOOD' => 'day'})
     expect(result).to include("HELLO=world")
     expect(result).to include("GOOD=day")
+  end
+
+  it "gives the command an empty stdin rather than blocking" do
+    output = Timeout.timeout(5) { SafeShell.execute("cat") }
+    expect(output).to eql("")
+    expect($?.exitstatus).to eql(0)
   end
 
   it "should set $? to the exit status of the command" do
