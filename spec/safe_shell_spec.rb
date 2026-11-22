@@ -2,6 +2,8 @@ require 'spec_helper'
 require 'safe_shell'
 require 'pathname'
 require 'timeout'
+require 'tmpdir'
+require 'fileutils'
 
 RSpec.describe SafeShell do
 
@@ -393,6 +395,72 @@ RSpec.describe SafeShell do
       output = SafeShell.execute("sh", "-c", "echo err >&2", :stderr => "tmp/output.txt")
       expect(output).to eql("")
       expect(File.read("tmp/output.txt")).to eql("err\n")
+    end
+  end
+
+  context "options" do
+    let(:untouched) { File.join(Dir.mktmpdir, "untouched.txt") }
+
+    after { FileUtils.remove_entry(File.dirname(untouched)) }
+
+    it "accepts a Hash of options passed with **" do
+      options = { :env => { "SAFE_SHELL_SPEC" => "set" } }
+      expect(SafeShell.execute("sh", "-c", "printf %s \"$SAFE_SHELL_SPEC\"", **options)).to eql("set")
+    end
+
+    it "raises ArgumentError for an option it does not know, running nothing" do
+      expect(SafeShell).not_to receive(:spawn)
+      expect { SafeShell.execute("pwd", :chdir => "/") }.to raise_error(ArgumentError, /chdir/)
+      expect { SafeShell.execute("pwd", "stdout" => untouched) }.to raise_error(ArgumentError)
+      expect { SafeShell.execute?("pwd", :chdir => "/") }.to raise_error(ArgumentError, /chdir/)
+      expect { SafeShell.execute!("pwd", :chdir => "/") }.to raise_error(ArgumentError, /chdir/)
+    end
+
+    it "passes the options through execute?" do
+      script = 'test "$SAFE_SHELL_SPEC" = set'
+      expect(SafeShell.execute?("sh", "-c", script, :env => { "SAFE_SHELL_SPEC" => "set" })).to eql(true)
+      expect(SafeShell.execute?("sh", "-c", script, :env => { "SAFE_SHELL_SPEC" => "other" })).to eql(false)
+    end
+
+    it "passes the options through execute!" do
+      options = { :env => { "SAFE_SHELL_SPEC" => "set" } }
+      expect(SafeShell.execute!("sh", "-c", "printf %s \"$SAFE_SHELL_SPEC\"", **options)).to eql("set")
+    end
+
+    [
+      ["a symbol-keyed Hash", lambda { |path| { :stdout => path, :env => { "PATH" => "/nonexistent" } } }],
+      ["a string-keyed Hash", lambda { |path| { "stdout" => path } }],
+      ["a Hash subclass", lambda { |path| Class.new(Hash).new.merge!(:stdout => path) }],
+    ].each do |description, build|
+      it "raises ArgumentError for #{description} as the last argument, running nothing" do
+        hash = build.call(untouched)
+        expect(SafeShell).not_to receive(:spawn)
+        expect { SafeShell.execute("echo", "x", hash) }.to raise_error(ArgumentError, /cannot be a Hash/)
+        expect { SafeShell.execute?("echo", "x", hash) }.to raise_error(ArgumentError)
+        expect { SafeShell.execute!("echo", "x", hash) }.to raise_error(ArgumentError)
+        expect { SafeShell.execute("echo", *["x", hash]) }.to raise_error(ArgumentError)
+        expect(File.exist?(untouched)).to eql(false)
+      end
+    end
+
+    it "raises ArgumentError for a Hash among the arguments" do
+      expect { SafeShell.execute("echo", { :stdout => untouched }, "x") }.to raise_error(ArgumentError)
+    end
+
+    it "raises ArgumentError for a Hash as the command, running nothing" do
+      hash = { :env => { "SECRET" => "hunter2" } }
+      expect(SafeShell).not_to receive(:spawn)
+      [:execute, :execute?, :execute!].each do |method|
+        expect { SafeShell.public_send(method, hash) }.to raise_error(ArgumentError, /cannot be a Hash/) { |error|
+          expect(error.message).not_to include("hunter2")
+        }
+      end
+    end
+
+    it "keeps the Hash out of the ArgumentError message" do
+      expect { SafeShell.execute("echo", { :env => { "SECRET" => "hunter2" } }) }.to raise_error(ArgumentError) { |error|
+        expect(error.message).not_to include("hunter2")
+      }
     end
   end
 

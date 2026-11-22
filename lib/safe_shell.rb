@@ -61,21 +61,28 @@ module SafeShell
   #
   # @param command [#to_s] the program to run, found on the `PATH` the
   #   command will see if it has no directory component
-  # @param args [Array<#to_s>] the program's arguments, with an optional
-  #   trailing Hash of options; other keys in the Hash are ignored
-  # @option args [String, Pathname] :stdout path of a file to write stdout
-  #   to instead of returning it; the file is truncated on each call
-  # @option args [String, Pathname] :stderr path of a file to write stderr
-  #   to instead of returning it; the file is truncated on each call, and
-  #   may be the same file as `:stdout`
-  # @option args [Hash{String => String, nil}] :env environment variables
-  #   to set for the command; a nil value unsets one
+  # @param args [Array<#to_s>] the program's arguments; none may be a Hash
+  # @param stdout [String, Pathname, nil] path of a file to write stdout to
+  #   instead of returning it; the file is truncated on each call
+  # @param stderr [String, Pathname, nil] path of a file to write stderr to
+  #   instead of returning it; the file is truncated on each call, and may
+  #   be the same file as `stdout`
+  # @param env [Hash{String => String, nil}, nil] environment variables to
+  #   set for the command; a nil value unsets one
   # @return [String] the command's output
+  # @raise [ArgumentError] if the command or an argument is a Hash, or a
+  #   keyword other than `stdout`, `stderr` and `env` is given; no command
+  #   is run
   # @raise [SystemCallError] if the program cannot be started
   #   (`Errno::ENOENT` if it is not found, `Errno::EACCES` if it is not
   #   executable) or a redirect file cannot be opened
-  def self.execute(command, *args)
-    opts = args.last.kind_of?(Hash) ? args.pop : {}
+  def self.execute(command, *args, stdout: nil, stderr: nil, env: nil)
+    # A Hash here is options passed the old way. Raise rather than hand the
+    # program its inspect text.
+    # The Hash is left out of the message: it may hold credentials.
+    if [command, *args].any? { |a| a.kind_of?(Hash) }
+      raise ArgumentError, "the command and its arguments cannot be a Hash; pass stdout:, stderr: and env: as keywords"
+    end
 
     # Interrupts Ruby can defer (Thread#raise, which Timeout uses; Thread#kill;
     # the default signal handlers) are deferred except around the read and the
@@ -88,17 +95,16 @@ module SafeShell
 
       begin
         # Opened read-write: write-only blocks on a FIFO with no reader.
-        new_stdout = opts[:stdout] ? File.open(opts[:stdout], "w+") : write_end
+        new_stdout = stdout ? File.open(stdout, "w+") : write_end
         # One file for both streams is opened once, so the streams share an
         # offset and neither overwrites the other.
-        new_stderr = if opts[:stderr].nil?
+        new_stderr = if stderr.nil?
           write_end
-        elsif opts[:stdout] && File.identical?(new_stdout, opts[:stderr])
+        elsif stdout && File.identical?(new_stdout, stderr)
           new_stdout
         else
-          File.open(opts[:stderr], "w+")
+          File.open(stderr, "w+")
         end
-        env = opts[:env]
         # A command that reads stdin gets EOF at once rather than blocking.
         spawn_opts = {:in => File::NULL, :out => new_stdout, :err => new_stderr}
 
@@ -145,31 +151,28 @@ module SafeShell
   # Runs a command as {.execute} does, discarding its output.
   #
   # @param (see .execute)
-  # @option (see .execute)
   # @return [Boolean, nil] true if the command exited with status zero,
   #   false if it exited with another status, nil if it was terminated by a
   #   signal
   # @raise (see .execute)
-  def self.execute?(*args)
-    execute(*args)
+  def self.execute?(*args, **opts)
+    execute(*args, **opts)
     $?.success?
   end
 
   # Runs a command as {.execute} does, raising if it fails.
   #
   # @param (see .execute)
-  # @option (see .execute)
   # @return [String] the command's output
   # @raise [CommandFailedException] if the command exits with a non-zero
   #   status or is terminated by a signal
   # @raise (see .execute)
-  def self.execute!(command, *args)
-    output = execute(command, *args)
+  def self.execute!(command, *args, **opts)
+    output = execute(command, *args, **opts)
     return output if $?.success?
 
-    # The options are left out, since :env may hold credentials for the
+    # The options are left out, since env may hold credentials for the
     # child process.
-    args.pop if args.last.kind_of?(Hash)
     raise CommandFailedException.new(
       :command => command.to_s, :args => args.map { |a| a.to_s }, :status => $?, :output => output
     )
