@@ -35,14 +35,12 @@ module SafeShell
 
   def self.execute!(*args)
     execute(*args).tap do
-      raise_command_failed_exception(*args) unless $?.success?
+      unless $?.success?
+        # Leave the options hash out of the message: :env is where callers
+        # put credentials for the child process.
+        argv = args.last.kind_of?(Hash) ? args[0...-1] : args
+        raise CommandFailedException.new("Shell command #{argv.inspect} failed with status #{$?}")
+      end
     end
   end
-
-private
-
-  def self.raise_command_failed_exception(*args)
-    raise CommandFailedException.new("Shell command #{args.inspect} failed with status #{$?}")
-  end
-
 end

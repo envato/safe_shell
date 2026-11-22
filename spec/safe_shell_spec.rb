@@ -68,10 +68,20 @@ describe "SafeShell" do
       expect(SafeShell.execute!("echo", "Hello, world!")).to eql("Hello, world!\n")
     end
 
-    it "raises an exception of the command fails" do
+    it "raises an exception if the command fails" do
       expect {
         SafeShell.execute!("test", "a", "=", "b")
-      }.to raise_error(SafeShell::CommandFailedException)
+      }.to raise_error(SafeShell::CommandFailedException, /\["test", "a", "=", "b"\] failed with status/)
+    end
+
+    it "keeps environment variables out of the exception message" do
+      expect {
+        SafeShell.execute!("false", :env => { "SECRET" => "hunter2" })
+      }.to raise_error(SafeShell::CommandFailedException) { |error|
+        expect(error.message).to include('["false"]')
+        expect(error.message).not_to include("hunter2")
+        expect(error.message).not_to include("SECRET")
+      }
     end
   end
 
