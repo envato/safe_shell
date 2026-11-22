@@ -1,15 +1,18 @@
+require 'spec_helper'
 require 'safe_shell'
 require 'pathname'
 require 'timeout'
 
-describe "SafeShell" do
+RSpec.describe SafeShell do
 
-  it "should return the output of the command" do
+  it "returns the output of the command" do
     expect(SafeShell.execute("echo", "Hello, world!")).to eql("Hello, world!\n")
   end
 
-  it "should safely handle dangerous characters in command arguments" do
-    expect(SafeShell.execute("echo", ";date")).to eql(";date\n")
+  it "passes shell metacharacters in arguments to the command literally" do
+    ["$HOME", "`date`", "$(date)", "'quoted'", '"quoted"', "a|b", "a>b", "a&&b", "a;b", "*", "~", "a\nb", "", "-n"].each do |arg|
+      expect(SafeShell.execute("printf", "%s", arg)).to eql(arg), "for #{arg.inspect}"
+    end
   end
 
   it "never passes a command with no arguments to a shell" do
@@ -24,14 +27,15 @@ describe "SafeShell" do
     }.to raise_error(Errno::ENOENT)
   end
 
-  it "allows to add new env vars" do
-    result = SafeShell.execute('env')
+  it "adds the given environment variables to the parent's" do
+    result = SafeShell.execute("env")
     expect(result).to_not include("HELLO=world")
-    expect(result).to_not include("GOOD=world")
+    expect(result).to_not include("GOOD=day")
 
-    result = SafeShell.execute('env', env: {'HELLO' => 'world', 'GOOD' => 'day'})
+    result = SafeShell.execute("env", :env => { "HELLO" => "world", "GOOD" => "day" })
     expect(result).to include("HELLO=world")
     expect(result).to include("GOOD=day")
+    expect(result).to include("PATH=#{ENV["PATH"]}")
   end
 
   it "gives the command an empty stdin rather than blocking" do
@@ -40,7 +44,7 @@ describe "SafeShell" do
     expect($?.exitstatus).to eql(0)
   end
 
-  it "should set $? to the exit status of the command" do
+  it "sets $? to the exit status of the command" do
     SafeShell.execute("test", "a", "=", "a")
     expect($?.exitstatus).to eql(0)
 
@@ -48,8 +52,8 @@ describe "SafeShell" do
     expect($?.exitstatus).to eql(1)
   end
 
-  it "should handle a Pathname object passed as an argument" do
-    expect { SafeShell.execute("ls", Pathname.new("/tmp")) }.not_to raise_error
+  it "accepts a Pathname as an argument" do
+    expect(SafeShell.execute("printf", "%s", Pathname.new("/tmp"))).to eql("/tmp")
   end
 
   context "resource handling" do
@@ -379,16 +383,16 @@ describe "SafeShell" do
       expect(File.read("tmp/output.txt")).to eql("out\nerr\nout2\n")
     end
 
-    it "should let you redirect stdout to a file" do
-      SafeShell.execute("echo", "Hello, world!", :stdout => "tmp/output.txt")
-      expect(File.exist?("tmp/output.txt")).to eql(true)
+    it "lets you redirect stdout to a file" do
+      output = SafeShell.execute("echo", "Hello, world!", :stdout => "tmp/output.txt")
+      expect(output).to eql("")
       expect(File.read("tmp/output.txt")).to eql("Hello, world!\n")
     end
 
-    it "should let you redirect stderr to a file" do
-      SafeShell.execute("cat", "tmp/nonexistent-file", :stderr => "tmp/output.txt")
-      expect(File.exist?("tmp/output.txt")).to eql(true)
-      expect(File.read("tmp/output.txt")).to eql("cat: tmp/nonexistent-file: No such file or directory\n")
+    it "lets you redirect stderr to a file" do
+      output = SafeShell.execute("sh", "-c", "echo err >&2", :stderr => "tmp/output.txt")
+      expect(output).to eql("")
+      expect(File.read("tmp/output.txt")).to eql("err\n")
     end
   end
 
