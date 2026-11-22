@@ -37,7 +37,7 @@ module SafeShell
   #   to instead of returning it; the file is truncated on each call
   # @option args [String, Pathname] :stderr path of a file to write stderr
   #   to instead of returning it; the file is truncated on each call, and
-  #   must differ from `:stdout`
+  #   may be the same file as `:stdout`
   # @option args [Hash{String => String, nil}] :env environment variables
   #   to set for the command; a nil value unsets one
   # @return [String] the command's output
@@ -59,7 +59,15 @@ module SafeShell
       begin
         # Opened read-write: write-only blocks on a FIFO with no reader.
         new_stdout = opts[:stdout] ? File.open(opts[:stdout], "w+") : write_end
-        new_stderr = opts[:stderr] ? File.open(opts[:stderr], "w+") : write_end
+        # One file for both streams is opened once, so the streams share an
+        # offset and neither overwrites the other.
+        new_stderr = if opts[:stderr].nil?
+          write_end
+        elsif opts[:stdout] && File.identical?(new_stdout, opts[:stderr])
+          new_stdout
+        else
+          File.open(opts[:stderr], "w+")
+        end
         env = opts[:env]
         # A command that reads stdin gets EOF at once rather than blocking.
         spawn_opts = {:in => File::NULL, :out => new_stdout, :err => new_stderr}
