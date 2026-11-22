@@ -345,9 +345,28 @@ describe "SafeShell" do
     end
   end
 
+  it "returns stderr along with stdout" do
+    output = SafeShell.execute("sh", "-c", "echo out; echo err >&2")
+    expect(output).to include("out\n")
+    expect(output).to include("err\n")
+  end
+
   context "output redirection" do
     before do
       File.delete("tmp/output.txt") if File.exist?("tmp/output.txt")
+    end
+
+    it "returns only stderr when stdout is redirected" do
+      output = SafeShell.execute("sh", "-c", "echo out; echo err >&2", :stdout => "tmp/output.txt")
+      expect(output).to eql("err\n")
+      expect(File.read("tmp/output.txt")).to eql("out\n")
+    end
+
+    it "returns nothing when both streams are redirected" do
+      output = SafeShell.execute("sh", "-c", "echo out; echo err >&2", :stdout => "tmp/output.txt", :stderr => "tmp/error.txt")
+      expect(output).to eql("")
+      expect(File.read("tmp/output.txt")).to eql("out\n")
+      expect(File.read("tmp/error.txt")).to eql("err\n")
     end
 
     it "should let you redirect stdout to a file" do
