@@ -39,6 +39,13 @@ SafeShell.execute?("echo", "Hello, world!")
 
 # Raise an exception if the command exits with a non-zero status:
 SafeShell.execute!("echo", "Hello, world!")
+
+# The exception carries the command, its arguments, its status and its output:
+begin
+  SafeShell.execute!("git", "fetch", "origin")
+rescue SafeShell::CommandFailedException => e
+  warn "#{e.command} #{e.args.join(" ")} failed (#{e.status}): #{e.output}"
+end
 ```
 
 The returned String holds everything the command writes to stdout and stderr, interleaved as the command writes them. Redirecting one stream to a file leaves the other in the returned String, so with only `:stdout` redirected the return value is the command's stderr; with both redirected it is empty. Each file is truncated on every call. The same file may be given for both streams, and then holds both interleaved. Keys and values in `:env` are Strings, and a nil value unsets the variable for the command. Option keys other than `:stdout`, `:stderr` and `:env` are ignored.
