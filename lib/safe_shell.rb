@@ -1,3 +1,5 @@
+# frozen_string_literal: true
+
 # Runs a command without a shell and returns its output.
 #
 # The command and its arguments are passed to the program directly, so shell
@@ -80,7 +82,7 @@ module SafeShell
     # A Hash here is options passed the old way. Raise rather than hand the
     # program its inspect text.
     # The Hash is left out of the message: it may hold credentials.
-    if [command, *args].any? { |a| a.kind_of?(Hash) }
+    if [command, *args].any? { |a| a.is_a?(Hash) }
       raise ArgumentError, "the command and its arguments cannot be a Hash; pass stdout:, stderr: and env: as keywords"
     end
 
@@ -107,13 +109,13 @@ module SafeShell
             File.open(stderr, "w+")
           end
         # A command that reads stdin gets EOF at once rather than blocking.
-        spawn_opts = { :in => File::NULL, :out => new_stdout, :err => new_stderr }
+        spawn_opts = { in: File::NULL, out: new_stdout, err: new_stderr }
 
         # Passing the program as a two-element array forces Kernel#spawn to
         # exec it directly. A bare String with no further arguments would go
         # through /bin/sh -c whenever it contains shell metacharacters.
         program = [command.to_s, command.to_s]
-        argv = args.map { |a| a.to_s }
+        argv = args.map(&:to_s)
         spawn_args = env ? [env, program] : [program]
 
         pid = spawn(*spawn_args, *argv, spawn_opts)
@@ -133,12 +135,10 @@ module SafeShell
           # open.
           interruption = nil
           [read_end, write_end, new_stdout, new_stderr].each do |io|
-            begin
-              io.close if io && !io.closed?
-            rescue SystemCallError, IOError
-            rescue Exception => e
-              interruption ||= e
-            end
+            io.close if io && !io.closed?
+          rescue SystemCallError, IOError
+          rescue Exception => e
+            interruption ||= e
           end
           raise interruption if interruption
         ensure
@@ -175,7 +175,7 @@ module SafeShell
     # The options are left out, since env may hold credentials for the
     # child process.
     raise CommandFailedException.new(
-      :command => command.to_s, :args => args.map { |a| a.to_s }, :status => $?, :output => output
+      command: command.to_s, args: args.map(&:to_s), status: $?, output: output
     )
   end
 
