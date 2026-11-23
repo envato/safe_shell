@@ -8,6 +8,17 @@ require "tmpdir"
 require "fileutils"
 
 RSpec.describe SafeShell do
+  let(:dir) { @dir = Dir.mktmpdir }
+  let(:output_file) { File.join(dir, "output.txt") }
+  let(:error_file) { File.join(dir, "error.txt") }
+
+  after { FileUtils.remove_entry(@dir) if @dir }
+
+  def open_descriptors
+    skip "needs /dev/fd" unless File.directory?("/dev/fd")
+    Dir.entries("/dev/fd").size
+  end
+
   it "returns the output of the command" do
     expect(SafeShell.execute("echo", "Hello, world!")).to eql("Hello, world!\n")
   end
@@ -85,14 +96,9 @@ RSpec.describe SafeShell do
   end
 
   context "resource handling" do
-    def open_descriptors
-      skip "needs /dev/fd" unless File.directory?("/dev/fd")
-      Dir.entries("/dev/fd").size
-    end
-
     it "closes the redirect files it opens" do
       before = open_descriptors
-      5.times { SafeShell.execute("echo", "x", stdout: "tmp/output.txt", stderr: "tmp/error.txt") }
+      5.times { SafeShell.execute("echo", "x", stdout: output_file, stderr: error_file) }
       expect(open_descriptors).to eql(before)
     end
 
@@ -108,19 +114,68 @@ RSpec.describe SafeShell do
       before = open_descriptors
       5.times do
         expect {
-          SafeShell.execute("echo", "x", stdout: "tmp/output.txt", stderr: "tmp/no-such-dir/error.txt")
+          SafeShell.execute("echo", "x", stdout: output_file, stderr: File.join(dir, "no-such-dir", "error.txt"))
         }.to raise_error(Errno::ENOENT)
       end
       expect(open_descriptors).to eql(before)
     end
+  end
 
+  context "interruption" do
     def now
       Process.clock_gettime(Process::CLOCK_MONOTONIC)
     end
 
-    def spawned_pid
-      allow(SafeShell).to(receive(:spawn).and_wrap_original { |spawn, *args| @spawned = spawn.call(*args) })
+    # A file a command creates once it is ready to be interrupted.
+    def ready_file
+      @ready_file ||= File.join(dir, "ready")
+    end
+
+    # The trap comes before the file: ready_file must mean TERM is already
+    # ignored.
+    def ignoring_term
+      ["sh", "-c", 'trap "" TERM; : > "$1"; exec sleep 30', "sh", ready_file]
+    end
+
+    NEVER_READY = "the command did not create its ready_file"
+
+    # Records the pid SafeShell spawns. With await_ready, spawn does not return
+    # until ready_file exists, and then sleeps for then_sleep seconds. SafeShell
+    # defers a timeout until spawn returns, so the timeout lands only once the
+    # command is ready.
+    def spawned_pid(await_ready: false, then_sleep: 0)
+      allow(SafeShell).to(receive(:spawn).and_wrap_original do |spawn, *args|
+        @spawned = spawn.call(*args)
+        if await_ready
+          @awaited = true
+          deadline = now + 10
+          sleep 0.01 until File.exist?(ready_file) || (@never_ready = now > deadline)
+          sleep then_sleep
+        end
+        @spawn_returned_at = now
+        @spawned
+      end)
       lambda { @spawned }
+    end
+
+    # Seconds since spawn returned the command to SafeShell.
+    def since_spawn
+      raise NEVER_READY if @never_ready
+
+      now - @spawn_returned_at
+    end
+
+    def cruby_only
+      skip "only CRuby delivers a trap handler's exception during the cleanup" unless RUBY_ENGINE == "ruby"
+    end
+
+    # Runs the block with a USR1 handler that raises, numbering each exception.
+    def with_raising_trap
+      raised = 0
+      previous = trap("USR1") { raise "raised from trap handler #{raised += 1}" }
+      yield
+    ensure
+      trap("USR1", previous)
     end
 
     after do
@@ -133,13 +188,15 @@ RSpec.describe SafeShell do
         rescue Errno::ECHILD, Errno::ESRCH
         end
       end
+      raise NEVER_READY if @never_ready
+      raise "ready_file needs spawned_pid(await_ready: true)" if @ready_file && !@awaited
     end
 
     it "terminates and reaps the child if the read is interrupted" do
       pid = spawned_pid
       before = open_descriptors
       expect {
-        Timeout.timeout(0.5) { SafeShell.execute("sleep", "30", stdout: "tmp/output.txt") }
+        Timeout.timeout(0.5) { SafeShell.execute("sleep", "30", stdout: output_file) }
       }.to raise_error(Timeout::Error)
       expect($?.pid).to eql(pid.call)
       expect($?.termsig).to eql(Signal.list["TERM"])
@@ -161,34 +218,29 @@ RSpec.describe SafeShell do
     end
 
     it "lets a child blocked writing to a full pipe exit when interrupted" do
-      pid = nil
-      allow(SafeShell).to receive(:spawn).and_wrap_original do |spawn, *args|
-        @spawned = pid = spawn.call(*args)
-        sleep 0.3
-        pid
-      end
-      started = now
+      # The sleep gives yes time to fill the pipe. If it has not, the pipe is
+      # closed before yes writes again, and the expectations hold all the same.
+      pid = spawned_pid(await_ready: true, then_sleep: 0.3)
       expect {
-        Timeout.timeout(0.1) { SafeShell.execute("sh", "-c", 'trap "" TERM; exec yes') }
+        Timeout.timeout(0.1) { SafeShell.execute("sh", "-c", 'trap "" TERM; : > "$1"; exec yes', "sh", ready_file) }
       }.to raise_error(Timeout::Error)
-      expect(now - started).to be < 1
-      expect($?.pid).to eql(pid)
+      expect(since_spawn).to be < 1
+      expect($?.pid).to eql(pid.call)
       expect($?.termsig).to eql(Signal.list["PIPE"]).or be_nil
     end
 
     it "kills the child if it ignores TERM" do
-      pid = spawned_pid
-      started = now
+      pid = spawned_pid(await_ready: true)
       expect {
-        Timeout.timeout(0.5) { SafeShell.execute("sh", "-c", 'trap "" TERM; exec sleep 30') }
+        Timeout.timeout(0.5) { SafeShell.execute(*ignoring_term) }
       }.to raise_error(Timeout::Error)
-      expect(now - started).to be < 3
+      expect(since_spawn).to be < 3
       expect($?.pid).to eql(pid.call)
       expect($?.termsig).to eql(Signal.list["KILL"])
     end
 
     it "gives the child the whole grace period even when its thread is woken early" do
-      pid = spawned_pid
+      pid = spawned_pid(await_ready: true)
       waiter = Thread.current
       sibling = Thread.new do
         loop do
@@ -198,7 +250,7 @@ RSpec.describe SafeShell do
       end
       begin
         expect {
-          Timeout.timeout(0.3) { SafeShell.execute("sh", "-c", "trap 'kill $!; sleep 0.2; exit 0' TERM; sleep 30 & wait") }
+          Timeout.timeout(0.3) { SafeShell.execute("sh", "-c", "trap 'kill $!; sleep 0.2; exit 0' TERM; sleep 30 & : > \"$1\"; wait", "sh", ready_file) }
         }.to raise_error(Timeout::Error)
       ensure
         sibling.kill
@@ -209,10 +261,10 @@ RSpec.describe SafeShell do
     end
 
     it "finishes the cleanup if interrupted again while waiting for the child" do
-      pid = spawned_pid
+      pid = spawned_pid(await_ready: true)
       expect {
         Timeout.timeout(0.8) do
-          Timeout.timeout(0.3) { SafeShell.execute("sh", "-c", 'trap "" TERM; exec sleep 30') }
+          Timeout.timeout(0.3) { SafeShell.execute(*ignoring_term) }
         end
       }.to raise_error(Timeout::Error)
       expect($?.pid).to eql(pid.call)
@@ -220,56 +272,49 @@ RSpec.describe SafeShell do
     end
 
     it "reaps the child if a trap handler raises while waiting for it" do
-      pid = spawned_pid
-      previous = trap("USR1") { raise "raised from trap handler" }
+      pid = spawned_pid(await_ready: true)
       allow(Process).to receive(:kill).and_call_original
       interruptions = 1
       allow(Process).to receive(:kill).with("TERM", anything).and_wrap_original do |kill, *args|
         kill.call(*args)
         Process.kill("USR1", Process.pid) if (interruptions -= 1) >= 0
       end
-      started = now
-      begin
+      with_raising_trap do
         expect {
-          Timeout.timeout(0.3) { SafeShell.execute("sh", "-c", 'trap "" TERM; exec sleep 30') }
-        }.to raise_error(RuntimeError, "raised from trap handler")
+          Timeout.timeout(0.3) { SafeShell.execute(*ignoring_term) }
+        }.to raise_error(RuntimeError, "raised from trap handler 1")
       ensure
         interruptions = 0
-        trap("USR1", previous)
       end
-      expect(now - started).to be < (RUBY_ENGINE == "ruby" ? 1 : 3)
+      expect(since_spawn).to be < (RUBY_ENGINE == "ruby" ? 1 : 3)
       expect($?.pid).to eql(pid.call)
       expect($?.termsig).to eql(Signal.list["KILL"])
     end
 
     it "reaps the child if a trap handler raises again while killing it" do
-      skip "only CRuby delivers a trap handler's exception during the cleanup" unless RUBY_ENGINE == "ruby"
-      pid = spawned_pid
-      previous = trap("USR1") { raise "raised from trap handler" }
+      cruby_only
+      pid = spawned_pid(await_ready: true)
       allow(Process).to receive(:kill).and_call_original
       interruptions = 2
       allow(Process).to receive(:kill).with(/TERM|KILL/, anything).and_wrap_original do |kill, *args|
         kill.call(*args)
         Process.kill("USR1", Process.pid) if (interruptions -= 1) >= 0
       end
-      started = now
-      begin
+      with_raising_trap do
         expect {
-          Timeout.timeout(0.3) { SafeShell.execute("sh", "-c", 'trap "" TERM; exec sleep 30') }
-        }.to raise_error(RuntimeError, "raised from trap handler")
+          Timeout.timeout(0.3) { SafeShell.execute(*ignoring_term) }
+        }.to raise_error(RuntimeError, "raised from trap handler 1")
       ensure
         interruptions = 0
-        trap("USR1", previous)
       end
-      expect(now - started).to be < (RUBY_ENGINE == "ruby" ? 1 : 3)
+      expect(since_spawn).to be < 1
       expect($?.pid).to eql(pid.call)
       expect($?.termsig).to eql(Signal.list["KILL"])
     end
 
     it "stops retrying the kill at the deadline if a trap handler keeps raising" do
-      skip "only CRuby delivers a trap handler's exception during the cleanup" unless RUBY_ENGINE == "ruby"
-      pid = spawned_pid
-      previous = trap("USR1") { raise "raised from trap handler" }
+      cruby_only
+      pid = spawned_pid(await_ready: true)
       allow(Process).to receive(:kill).and_call_original
       armed = true
       allow(Process).to receive(:kill).with("TERM", anything).and_wrap_original do |kill, *args|
@@ -279,23 +324,20 @@ RSpec.describe SafeShell do
       allow(Process).to receive(:kill).with("KILL", anything).and_wrap_original do |kill, *args|
         armed ? raise("raised from a later trap handler") : kill.call(*args)
       end
-      started = now
-      begin
+      with_raising_trap do
         expect {
-          Timeout.timeout(0.3) { SafeShell.execute("sh", "-c", 'trap "" TERM; exec sleep 30') }
-        }.to raise_error(RuntimeError, "raised from trap handler")
+          Timeout.timeout(0.3) { SafeShell.execute(*ignoring_term) }
+        }.to raise_error(RuntimeError, "raised from trap handler 1")
       ensure
         armed = false
-        trap("USR1", previous)
       end
-      expect(now - started).to be_between(1, 2.5)
+      expect(since_spawn).to be_between(1, 2.5)
       expect { Process.kill(0, pid.call) }.not_to raise_error
     end
 
     it "keeps the trap handler's exception if the kill after it is refused" do
-      skip "only CRuby delivers a trap handler's exception during the cleanup" unless RUBY_ENGINE == "ruby"
-      pid = spawned_pid
-      previous = trap("USR1") { raise "raised from trap handler" }
+      cruby_only
+      pid = spawned_pid(await_ready: true)
       allow(Process).to receive(:kill).and_call_original
       armed = true
       allow(Process).to receive(:kill).with("TERM", anything).and_wrap_original do |kill, *args|
@@ -305,36 +347,32 @@ RSpec.describe SafeShell do
       allow(Process).to receive(:kill).with("KILL", anything).and_wrap_original do |kill, *args|
         armed ? raise(Errno::EPERM) : kill.call(*args)
       end
-      started = now
-      begin
+      with_raising_trap do
         expect {
-          Timeout.timeout(0.3) { SafeShell.execute("sh", "-c", 'trap "" TERM; exec sleep 30') }
-        }.to raise_error(RuntimeError, "raised from trap handler")
+          Timeout.timeout(0.3) { SafeShell.execute(*ignoring_term) }
+        }.to raise_error(RuntimeError, "raised from trap handler 1")
       ensure
         armed = false
-        trap("USR1", previous)
       end
-      expect(now - started).to be < 1
+      expect(since_spawn).to be < 1
       expect { Process.kill(0, pid.call) }.not_to raise_error
     end
 
     it "closes every descriptor if a trap handler raises while closing one" do
-      skip "only CRuby delivers a trap handler's exception during the cleanup" unless RUBY_ENGINE == "ruby"
+      cruby_only
       pid = spawned_pid
-      previous = trap("USR1") { raise "raised from trap handler" }
       armed = true
       allow_any_instance_of(File).to receive(:close).and_wrap_original do |close, *args|
         close.call(*args)
         Process.kill("USR1", Process.pid) if armed
       end
       before = open_descriptors
-      begin
+      with_raising_trap do
         expect {
-          Timeout.timeout(0.3) { SafeShell.execute("sleep", "30", stdout: "tmp/output.txt", stderr: "tmp/error.txt") }
-        }.to raise_error(RuntimeError, "raised from trap handler")
+          Timeout.timeout(0.3) { SafeShell.execute("sleep", "30", stdout: output_file, stderr: error_file) }
+        }.to raise_error(RuntimeError, "raised from trap handler 1")
       ensure
         armed = false
-        trap("USR1", previous)
       end
       expect(open_descriptors).to eql(before)
       expect($?.pid).to eql(pid.call)
@@ -342,18 +380,17 @@ RSpec.describe SafeShell do
     end
 
     it "leaves a child that does not die after KILL" do
-      pid = spawned_pid
+      pid = spawned_pid(await_ready: true)
       ignore_kill = true
       allow(Process).to receive(:kill).and_call_original
       allow(Process).to receive(:kill).with("KILL", anything).and_wrap_original do |kill, *args|
         ignore_kill ? 1 : kill.call(*args)
       end
-      started = now
       begin
         expect {
-          Timeout.timeout(0.3) { SafeShell.execute("sh", "-c", 'trap "" TERM; exec sleep 30') }
+          Timeout.timeout(0.3) { SafeShell.execute(*ignoring_term) }
         }.to raise_error(Timeout::Error)
-        expect(now - started).to be < 4
+        expect(since_spawn).to be < 4
         expect($?).to satisfy("be nil or describe another command") { |status| status.nil? || status.pid != pid.call }
         expect { Process.kill(0, pid.call) }.not_to raise_error
       ensure
@@ -365,12 +402,11 @@ RSpec.describe SafeShell do
       pid = spawned_pid
       allow(Process).to receive(:kill).and_call_original
       allow(Process).to receive(:kill).with("TERM", anything).and_raise(Errno::EPERM)
-      started = now
       begin
         expect {
           Timeout.timeout(0.3) { SafeShell.execute("sleep", "30") }
         }.to raise_error(Timeout::Error)
-        expect(now - started).to be < 1
+        expect(since_spawn).to be < 1
         expect($?).to satisfy("be nil or describe another command") { |status| status.nil? || status.pid != pid.call }
         expect { Process.kill(0, pid.call) }.not_to raise_error
       ensure
@@ -407,69 +443,63 @@ RSpec.describe SafeShell do
   end
 
   context "output redirection" do
-    before do
-      File.delete("tmp/output.txt") if File.exist?("tmp/output.txt")
-    end
-
     it "returns only stderr when stdout is redirected" do
-      output = SafeShell.execute("sh", "-c", "echo out; echo err >&2", stdout: "tmp/output.txt")
+      output = SafeShell.execute("sh", "-c", "echo out; echo err >&2", stdout: output_file)
       expect(output).to eql("err\n")
-      expect(File.read("tmp/output.txt")).to eql("out\n")
+      expect(File.read(output_file)).to eql("out\n")
     end
 
     it "returns nothing when both streams are redirected" do
-      output = SafeShell.execute("sh", "-c", "echo out; echo err >&2", stdout: "tmp/output.txt", stderr: "tmp/error.txt")
+      output = SafeShell.execute("sh", "-c", "echo out; echo err >&2", stdout: output_file, stderr: error_file)
       expect(output).to eql("")
-      expect(File.read("tmp/output.txt")).to eql("out\n")
-      expect(File.read("tmp/error.txt")).to eql("err\n")
+      expect(File.read(output_file)).to eql("out\n")
+      expect(File.read(error_file)).to eql("err\n")
     end
 
     it "lets you redirect both streams to the same file" do
-      SafeShell.execute("sh", "-c", "echo out; echo err >&2; echo out2", stdout: "tmp/output.txt", stderr: "tmp/output.txt")
-      expect(File.read("tmp/output.txt")).to eql("out\nerr\nout2\n")
+      SafeShell.execute("sh", "-c", "echo out; echo err >&2; echo out2", stdout: output_file, stderr: output_file)
+      expect(File.read(output_file)).to eql("out\nerr\nout2\n")
     end
 
     it "treats two spellings of one path as the same file" do
-      SafeShell.execute("sh", "-c", "echo out; echo err >&2; echo out2", stdout: "tmp/output.txt", stderr: "./tmp/../tmp/output.txt")
-      expect(File.read("tmp/output.txt")).to eql("out\nerr\nout2\n")
+      SafeShell.execute("sh", "-c", "echo out; echo err >&2; echo out2", stdout: output_file, stderr: File.join(dir, "..", File.basename(dir), "output.txt"))
+      expect(File.read(output_file)).to eql("out\nerr\nout2\n")
     end
 
     it "lets you redirect stdout to a file" do
-      output = SafeShell.execute("echo", "Hello, world!", stdout: "tmp/output.txt")
+      output = SafeShell.execute("echo", "Hello, world!", stdout: output_file)
       expect(output).to eql("")
-      expect(File.read("tmp/output.txt")).to eql("Hello, world!\n")
+      expect(File.read(output_file)).to eql("Hello, world!\n")
     end
 
     it "lets you redirect stderr to a file" do
-      output = SafeShell.execute("sh", "-c", "echo err >&2", stderr: "tmp/output.txt")
+      output = SafeShell.execute("sh", "-c", "echo err >&2", stderr: output_file)
       expect(output).to eql("")
-      expect(File.read("tmp/output.txt")).to eql("err\n")
+      expect(File.read(output_file)).to eql("err\n")
     end
 
     it "accepts a Pathname for each redirect file" do
-      output = SafeShell.execute("sh", "-c", "echo out; echo err >&2", stdout: Pathname.new("tmp/output.txt"), stderr: Pathname.new("tmp/error.txt"))
+      output = SafeShell.execute("sh", "-c", "echo out; echo err >&2", stdout: Pathname.new(output_file), stderr: Pathname.new(error_file))
       expect(output).to eql("")
-      expect(File.read("tmp/output.txt")).to eql("out\n")
-      expect(File.read("tmp/error.txt")).to eql("err\n")
+      expect(File.read(output_file)).to eql("out\n")
+      expect(File.read(error_file)).to eql("err\n")
     end
 
     it "truncates the file stdout is redirected to" do
-      File.write("tmp/output.txt", "left by an earlier call\n")
-      SafeShell.execute("echo", "out", stdout: "tmp/output.txt")
-      expect(File.read("tmp/output.txt")).to eql("out\n")
+      File.write(output_file, "left by an earlier call\n")
+      SafeShell.execute("echo", "out", stdout: output_file)
+      expect(File.read(output_file)).to eql("out\n")
     end
 
     it "truncates the file stderr is redirected to" do
-      File.write("tmp/error.txt", "left by an earlier call\n")
-      SafeShell.execute("sh", "-c", "echo err >&2", stderr: "tmp/error.txt")
-      expect(File.read("tmp/error.txt")).to eql("err\n")
+      File.write(error_file, "left by an earlier call\n")
+      SafeShell.execute("sh", "-c", "echo err >&2", stderr: error_file)
+      expect(File.read(error_file)).to eql("err\n")
     end
   end
 
   context "options" do
-    let(:untouched) { File.join(Dir.mktmpdir, "untouched.txt") }
-
-    after { FileUtils.remove_entry(File.dirname(untouched)) }
+    let(:untouched) { File.join(dir, "untouched.txt") }
 
     it "accepts a Hash of options passed with **" do
       options = { env: { "SAFE_SHELL_SPEC" => "set" } }
@@ -590,17 +620,6 @@ RSpec.describe SafeShell do
       }
     end
 
-    it "can be constructed and raised with a message alone, or with nothing" do
-      expect { raise SafeShell::CommandFailedException }.to raise_error(SafeShell::CommandFailedException, "SafeShell::CommandFailedException")
-      expect { raise SafeShell::CommandFailedException, "boom" }.to raise_error(SafeShell::CommandFailedException, "boom")
-      error = SafeShell::CommandFailedException.new("boom")
-      expect(error.message).to eql("boom")
-      expect(error.command).to be_nil
-      expect(error.args).to eql([])
-      expect(error.status).to be_nil
-      expect(error.output).to be_nil
-    end
-
     it "keeps environment variables out of the exception message" do
       expect {
         SafeShell.execute!("false", env: { "SECRET" => "hunter2" })
@@ -610,5 +629,18 @@ RSpec.describe SafeShell do
         expect(error.message).not_to include("SECRET")
       }
     end
+  end
+end
+
+RSpec.describe SafeShell::CommandFailedException do
+  it "can be constructed and raised with a message alone, or with nothing" do
+    expect { raise SafeShell::CommandFailedException }.to raise_error(SafeShell::CommandFailedException, "SafeShell::CommandFailedException")
+    expect { raise SafeShell::CommandFailedException, "boom" }.to raise_error(SafeShell::CommandFailedException, "boom")
+    error = SafeShell::CommandFailedException.new("boom")
+    expect(error.message).to eql("boom")
+    expect(error.command).to be_nil
+    expect(error.args).to eql([])
+    expect(error.status).to be_nil
+    expect(error.output).to be_nil
   end
 end
