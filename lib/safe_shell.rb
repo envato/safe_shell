@@ -72,9 +72,9 @@ module SafeShell
   # @param env [Hash{String => String, nil}, nil] environment variables to
   #   set for the command; a nil value unsets one
   # @return [String] the command's output
-  # @raise [ArgumentError] if the command or an argument is a Hash, or a
-  #   keyword other than `stdout`, `stderr` and `env` is given; no command
-  #   is run
+  # @raise [ArgumentError] if the command or an argument is a Hash, a
+  #   keyword other than `stdout`, `stderr` and `env` is given, or `stdout`
+  #   or `stderr` is neither a path nor nil; no command is run
   # @raise [SystemCallError] if the program cannot be started
   #   (`Errno::ENOENT` if it is not found, `Errno::EACCES` if it is not
   #   executable) or a redirect file cannot be opened
@@ -85,6 +85,9 @@ module SafeShell
     if [command, *args].any? { |a| a.is_a?(Hash) }
       raise ArgumentError, "the command and its arguments cannot be a Hash; pass stdout:, stderr: and env: as keywords"
     end
+
+    stdout = redirect_path(:stdout, stdout)
+    stderr = redirect_path(:stderr, stderr)
 
     # Interrupts Ruby can defer (Thread#raise, which Timeout uses; Thread#kill;
     # the default signal handlers) are deferred except around the read and the
@@ -178,6 +181,20 @@ module SafeShell
       command: command.to_s, args: args.map(&:to_s), status: $?, output: output
     )
   end
+
+  # The path of the file a stream is redirected to, or nil if it is not
+  # redirected. File.open would take an IO or a file descriptor number too:
+  # it names a new file after the IO, and adopts the descriptor, which is
+  # then closed under its owner.
+  def self.redirect_path(option, value)
+    return nil if value.nil?
+    raise TypeError if value.is_a?(IO)
+
+    File.path(value)
+  rescue TypeError
+    raise ArgumentError, "#{option}: must be the path of a file as a String or Pathname, not #{value.class}"
+  end
+  private_class_method :redirect_path
 
   # Reaps pid, sending TERM and then KILL if it is still running. Each wait
   # is one GRACE_PERIOD, so the call returns within about two grace periods,

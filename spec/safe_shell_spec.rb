@@ -561,6 +561,30 @@ RSpec.describe SafeShell do
         expect(error.message).not_to include("hunter2")
       }
     end
+
+    [:stdout, :stderr].each do |stream|
+      it "raises ArgumentError for a #{stream} that is not a path, running nothing" do
+        expect(SafeShell).not_to receive(:spawn)
+        File.open(untouched, "w") do |file|
+          [file, $stderr, file.fileno, false, :symbol, 1.5].each do |value|
+            [:execute, :execute?, :execute!].each do |method|
+              expect { SafeShell.public_send(method, "echo", "x", stream => value) }
+                .to raise_error(ArgumentError, /#{stream}: must be the path of a file/), "for #{value.inspect}"
+            end
+          end
+          expect { file.write("still open") }.not_to raise_error
+        end
+        expect(File.read(untouched)).to eql("still open")
+        expect(Dir.children(dir)).to eql(["untouched.txt"])
+      end
+    end
+
+    it "does not create a file named after an IO given as a redirect" do
+      Dir.chdir(dir) do
+        expect { SafeShell.execute("echo", "x", stdout: $stderr) }.to raise_error(ArgumentError)
+      end
+      expect(Dir.children(dir)).to eql([])
+    end
   end
 
   context ".execute?" do
