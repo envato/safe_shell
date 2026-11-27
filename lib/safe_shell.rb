@@ -71,7 +71,9 @@ module SafeShell
   #   be the same file as `stdout`
   # @param env [Hash{String => String, nil}, nil] environment variables to
   #   set for the command; a nil value unsets one
-  # @return [String] the command's output
+  # @return [String] the command's output: the bytes it wrote, tagged with
+  #   `Encoding.default_external` and not transcoded to
+  #   `Encoding.default_internal`, as with the backtick operator
   # @raise [ArgumentError] if the command or an argument is a Hash, or a
   #   keyword other than `stdout`, `stderr` and `env` is given; no command
   #   is run
@@ -91,7 +93,12 @@ module SafeShell
     # wait, so every descriptor and the pid are assigned when the ensure runs.
     # On CRuby an exception raised from a trap handler is not deferred.
     Thread.handle_interrupt(Object => :never) do
-      read_end, write_end = IO.pipe
+      # With the default external encoding as its internal encoding too, the
+      # read end transcodes nothing to Encoding.default_internal: the output
+      # is the bytes the command wrote, tagged as the backtick operator tags
+      # them.
+      external = Encoding.default_external
+      read_end, write_end = IO.pipe(external, external)
       new_stdout = new_stderr = nil
       pid = nil
 
@@ -164,7 +171,7 @@ module SafeShell
   # Runs a command as {.execute} does, raising if it fails.
   #
   # @param (see .execute)
-  # @return [String] the command's output
+  # @return (see .execute)
   # @raise [CommandFailedException] if the command exits with a non-zero
   #   status or is terminated by a signal
   # @raise (see .execute)

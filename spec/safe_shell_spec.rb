@@ -19,6 +19,23 @@ RSpec.describe SafeShell do
     Dir.entries("/dev/fd").size
   end
 
+  # Ruby warns when the default internal encoding is set, so the warning is
+  # silenced for the assignment and the restore.
+  def with_default_internal(encoding)
+    was = Encoding.default_internal
+    set_default_internal(encoding)
+    yield
+  ensure
+    set_default_internal(was)
+  end
+
+  def set_default_internal(encoding)
+    verbose, $VERBOSE = $VERBOSE, nil
+    Encoding.default_internal = encoding
+  ensure
+    $VERBOSE = verbose
+  end
+
   it "returns the output of the command" do
     expect(SafeShell.execute("echo", "Hello, world!")).to eql("Hello, world!\n")
   end
@@ -45,6 +62,17 @@ RSpec.describe SafeShell do
     output = Timeout.timeout(5) { SafeShell.execute("head", "-c", "300000", "/dev/zero") }
     expect(output.bytesize).to eql(300_000)
     expect($?.exitstatus).to eql(0)
+  end
+
+  it "returns the bytes the command wrote, untranscoded, when a default internal encoding is set" do
+    # "café" in UTF-8, then two bytes no UTF-8 String may hold.
+    bytes = [99, 97, 102, 195, 169, 255, 254]
+    internal = Encoding.default_external == Encoding::UTF_8 ? Encoding::ISO_8859_1 : Encoding::UTF_8
+    with_default_internal(internal) do
+      output = SafeShell.execute("printf", 'caf\303\251\377\376')
+      expect(output.bytes).to eql(bytes)
+      expect(output.encoding).to eql(Encoding.default_external)
+    end
   end
 
   it "never passes a command with no arguments to a shell" do
