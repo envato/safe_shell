@@ -48,7 +48,7 @@ rescue SafeShell::CommandFailedException => e
 end
 ```
 
-The returned String holds everything the command writes to stdout and stderr, interleaved as the command writes them. Redirecting one stream to a file leaves the other in the returned String, so with only `:stdout` redirected the return value is the command's stderr; with both redirected it is empty. Each file is truncated on every call. The same file may be given for both streams, and then holds both interleaved. Keys and values in `:env` are Strings, and a nil value unsets the variable for the command.
+The returned String holds everything the command writes to stdout and stderr, interleaved as the command writes them. It is the bytes the command wrote, tagged with `Encoding.default_external` and not transcoded to `Encoding.default_internal`, as with backticks. Redirecting one stream to a file leaves the other in the returned String, so with only `:stdout` redirected the return value is the command's stderr; with both redirected it is empty. Each file is truncated on every call. The same file may be given for both streams, and then holds both interleaved. Keys and values in `:env` are Strings, and a nil value unsets the variable for the command.
 
 The options are keyword arguments; pass a Hash of them with `**`, and only a Hash your own code wrote, never one that arrived as data. An option other than `stdout`, `stderr` and `env` raises `ArgumentError`, as does a Hash given as the command or as an argument, and no command runs.
 
